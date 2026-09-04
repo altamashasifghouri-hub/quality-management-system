@@ -99,7 +99,7 @@ export default function Settings() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 px-4 py-10">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <Link href="/auth/signin" className="inline-flex items-center gap-3 mb-6">
+          <Link href="/dashboard" className="inline-flex items-center gap-3 mb-6">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/30">
               <svg
                 className="w-6 h-6 text-blue-400"
@@ -129,15 +129,10 @@ export default function Settings() {
 
         {!sessionUser && (
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8 shadow-2xl text-center">
-            <p className="text-blue-200/60 mb-4">
-              Please sign in first to access account settings.
-            </p>
-            <Link
-              href="/auth/signin"
-              className="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-all duration-200"
-            >
-              Go to Sign In
-            </Link>
+            <div className="flex justify-center mb-4">
+              <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+            <p className="text-blue-200/60">Loading your settings...</p>
           </div>
         )}
 
@@ -237,10 +232,10 @@ export default function Settings() {
 
         <div className="mt-8 text-center">
           <Link
-            href="/auth/signin"
+            href="/dashboard"
             className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors"
           >
-            ← Back to Sign In
+            ← Back to Dashboard
           </Link>
         </div>
       </div>
