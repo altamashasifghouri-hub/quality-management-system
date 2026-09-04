@@ -36,10 +36,10 @@ export default function Home() {
             Sign In
           </Link>
           <Link
-            href="/auth/signup"
+            href="/public"
             className="px-8 py-3 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg border border-white/20 transition-all duration-200"
           >
-            Sign Up
+            Public view
           </Link>
         </div>
       </div>

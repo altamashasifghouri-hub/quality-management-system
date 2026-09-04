@@ -112,18 +112,6 @@ export default function SignIn() {
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm text-blue-200/50">
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/auth/signup"
-                className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
-              >
-                Sign up
-              </Link>
-            </p>
-          </div>
         </div>
       </div>
     </div>
