@@ -39,7 +39,7 @@ export default function SignIn() {
         <div className="flex justify-end mb-4">
           <Link
             href="/settings"
-            className="inline-flex items-center gap-2 text-sm text-blue-300/70 hover:text-blue-200 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg transition-all duration-200"
           >
             <svg
               className="w-4 h-4"
