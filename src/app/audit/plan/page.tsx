@@ -6,10 +6,9 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
 interface AuditSchedule {
-  id: string; branch_id: string; department_id: string;
-  date_from: string; date_to: string; auditor: string;
-  status: string; notes: string;
-  branch_name?: string; dept_name?: string;
+  id: string; branch_id: string; date_from: string; date_to: string;
+  auditor: string; status: string; notes: string;
+  departments: string[]; branch_name?: string;
 }
 
 interface AuditPlan {
@@ -18,6 +17,8 @@ interface AuditPlan {
   checklist: { text: string; done: boolean }[];
   created_at: string;
 }
+
+const BRANCH_COLORS = ["border-blue-500", "border-emerald-500", "border-amber-500", "border-purple-500", "border-rose-500", "border-cyan-500", "border-orange-500", "border-pink-500"];
 
 export default function AuditPlanPage() {
   const supabase = createClient();
@@ -41,14 +42,13 @@ export default function AuditPlanPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data: s } = await supabase.from("audit_schedules").select("*, branches(name), departments(name)").order("date_from");
+    const { data: s } = await supabase.from("audit_schedules").select("*, branches(name)").order("date_from");
     const { data: p } = await supabase.from("audit_plans").select("*").order("created_at", { ascending: false });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setSchedules((s || []).map((r: any) => ({
-      id: r.id, branch_id: r.branch_id, department_id: r.department_id,
-      date_from: r.date_from, date_to: r.date_to, auditor: r.auditor,
-      status: r.status, notes: r.notes,
-      branch_name: r.branches?.name || "", dept_name: r.departments?.name || "",
+      id: r.id, branch_id: r.branch_id, date_from: r.date_from, date_to: r.date_to,
+      auditor: r.auditor, status: r.status, notes: r.notes,
+      departments: r.departments || [], branch_name: r.branches?.name || "",
     })));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setPlans((p || []).map((r: any) => ({
@@ -63,8 +63,6 @@ export default function AuditPlanPage() {
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 3000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 4000); }
-
-  const scheduleMap = Object.fromEntries(schedules.map((s) => [s.id, s]));
 
   async function handleCreatePlan(e: React.FormEvent) {
     e.preventDefault();
@@ -103,7 +101,8 @@ export default function AuditPlanPage() {
     const checklist = editChecklist.filter((c) => c.text.trim());
     setSaving(true);
     const { error } = await supabase.from("audit_plans").update({
-      title: editTitle.trim(), description: editDesc.trim() || null, checklist, status: checklist.every((c) => c.done) ? "Completed" : checklist.some((c) => c.done) ? "In Progress" : "Draft",
+      title: editTitle.trim(), description: editDesc.trim() || null, checklist,
+      status: checklist.every((c) => c.done) ? "Completed" : checklist.some((c) => c.done) ? "In Progress" : "Draft",
       updated_at: new Date().toISOString(),
     }).eq("id", id);
     setSaving(false);
@@ -124,6 +123,7 @@ export default function AuditPlanPage() {
 
   const schedulesWithPlan = new Set(plans.map((p) => p.schedule_id));
   const availableSchedules = schedules.filter((s) => !schedulesWithPlan.has(s.id));
+  const scheduleMap = Object.fromEntries(schedules.map((s) => [s.id, s]));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -136,7 +136,7 @@ export default function AuditPlanPage() {
           </Link>
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">Audit Plan</h1>
-        <p className="text-blue-200/60 mb-8">Select a schedule and create your audit plan</p>
+        <p className="text-blue-200/60 mb-8">Select a branch schedule and create your audit plan</p>
 
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
@@ -145,14 +145,21 @@ export default function AuditPlanPage() {
           <h2 className="text-lg font-semibold text-white mb-4">Create New Plan</h2>
           <form onSubmit={handleCreatePlan}>
             <div className="mb-4">
-              <label className="block text-sm text-blue-200/70 mb-1">Select Schedule</label>
+              <label className="block text-sm text-blue-200/70 mb-1">Select Branch Schedule</label>
               <select value={selectedSchedule || ""} onChange={(e) => setSelectedSchedule(e.target.value || null)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
-                <option value="" className="bg-slate-800">Choose a schedule...</option>
+                <option value="" className="bg-slate-800">Choose a branch schedule...</option>
                 {availableSchedules.map((s) => (
-                  <option key={s.id} value={s.id} className="bg-slate-800">{s.branch_name} — {s.dept_name} ({s.date_from} → {s.date_to})</option>
+                  <option key={s.id} value={s.id} className="bg-slate-800">{s.branch_name} ({s.date_from} → {s.date_to})</option>
                 ))}
               </select>
-              {availableSchedules.length === 0 && <p className="text-xs text-blue-200/40 mt-1">All schedules have plans. Create new schedules first.</p>}
+              {selectedSchedule && scheduleMap[selectedSchedule] && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {scheduleMap[selectedSchedule].departments.map((dept, i) => (
+                    <span key={i} className="px-2 py-1 text-xs bg-blue-500/20 text-blue-300 rounded-full">{dept}</span>
+                  ))}
+                </div>
+              )}
+              {availableSchedules.length === 0 && <p className="text-xs text-blue-200/40 mt-1">All schedules have plans.</p>}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
@@ -194,8 +201,9 @@ export default function AuditPlanPage() {
             <div className="space-y-4">
               {plans.map((plan) => {
                 const sched = scheduleMap[plan.schedule_id];
+                const colorIdx = sched ? BRANCH_COLORS.indexOf(BRANCH_COLORS[schedules.findIndex((s) => s.branch_id === sched.branch_id) % BRANCH_COLORS.length]) : 0;
                 return (
-                  <div key={plan.id} className="bg-white/5 rounded-xl border border-white/5 overflow-hidden">
+                  <div key={plan.id} className={`bg-white/5 rounded-xl border-l-4 ${BRANCH_COLORS[colorIdx >= 0 ? colorIdx : 0]} overflow-hidden`}>
                     {editingPlan === plan.id ? (
                       <div className="p-5">
                         <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-3 py-2 bg-white/10 border border-blue-500 rounded-lg text-white text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -219,7 +227,17 @@ export default function AuditPlanPage() {
                         <div className="flex items-start justify-between mb-2">
                           <div>
                             <h3 className="text-white font-semibold">{plan.title}</h3>
-                            {sched && <p className="text-xs text-blue-200/50">{sched.branch_name} — {sched.dept_name} ({sched.date_from} → {sched.date_to})</p>}
+                            {sched && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-sm text-white/80">{sched.branch_name}</span>
+                                <span className="text-xs text-blue-200/40">{sched.date_from} → {sched.date_to}</span>
+                              </div>
+                            )}
+                            {sched && sched.departments.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {sched.departments.map((dept, i) => (<span key={i} className="px-2 py-0.5 text-xs bg-white/5 rounded text-blue-200/60">{dept}</span>))}
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={`px-2 py-0.5 text-xs rounded-full ${plan.status === "Completed" ? "bg-green-500/20 text-green-300" : plan.status === "In Progress" ? "bg-amber-500/20 text-amber-300" : "bg-white/10 text-white/60"}`}>{plan.status}</span>
