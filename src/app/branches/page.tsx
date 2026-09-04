@@ -113,9 +113,15 @@ export default function BranchesPage() {
   async function handleAddDept(e: React.FormEvent, branchId: string) {
     e.preventDefault();
     if (!newDeptName.trim()) return;
+    const name = newDeptName.trim();
+    const branch = branches.find((b) => b.id === branchId);
+    const existing = (branch?.departments || []).some(
+      (d) => d.name.toLowerCase() === name.toLowerCase()
+    );
+    if (existing) return showErr("Department already exists in this branch.");
     const { error } = await supabase
       .from("departments")
-      .insert({ name: newDeptName.trim(), branch_id: branchId });
+      .insert({ name, branch_id: branchId });
     if (error) return showErr(error.message);
     setNewDeptName("");
     showMsg("Department added.");
@@ -192,6 +198,12 @@ export default function BranchesPage() {
           <div className="space-y-4">
             {branches.map((branch) => (
               <div key={branch.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden">
+                {(() => {
+                  const uniqueDepts = branch.departments.filter(
+                    (d, i, arr) => arr.findIndex((x) => x.name.toLowerCase() === d.name.toLowerCase()) === i
+                  );
+                  return (
+                <>
                 <div className="flex items-center justify-between px-6 py-4">
                   <div className="flex items-center gap-3 flex-1">
                     <button
@@ -218,7 +230,7 @@ export default function BranchesPage() {
                     ) : (
                       <div className="flex-1">
                         <h3 className="text-white font-semibold">{branch.name}</h3>
-                        <p className="text-xs text-blue-200/40">{branch.departments.length} department{branch.departments.length !== 1 ? "s" : ""}</p>
+                        <p className="text-xs text-blue-200/40">{uniqueDepts.length} department{uniqueDepts.length !== 1 ? "s" : ""}</p>
                       </div>
                     )}
                   </div>
@@ -258,11 +270,11 @@ export default function BranchesPage() {
                       </button>
                     </form>
 
-                    {branch.departments.length === 0 ? (
+                    {uniqueDepts.length === 0 ? (
                       <p className="text-sm text-blue-200/40 py-2">No departments yet.</p>
                     ) : (
                       <div className="space-y-2">
-                        {branch.departments.map((dept) => (
+                        {uniqueDepts.map((dept) => (
                           <div key={dept.id} className="flex items-center justify-between px-4 py-2.5 bg-white/5 rounded-lg">
                             {editDeptId === dept.id ? (
                               <div className="flex items-center gap-2 flex-1">
@@ -302,6 +314,9 @@ export default function BranchesPage() {
                     )}
                   </div>
                 )}
+                </>
+              );
+            })()}
               </div>
             ))}
           </div>
