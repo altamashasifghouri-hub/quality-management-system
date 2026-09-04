@@ -54,9 +54,9 @@ export default function SignIn() {
               </svg>
             </div>
           </Link>
-          <h1 className="text-3xl font-bold text-white">Welcome back</h1>
+          <h1 className="text-3xl font-bold text-white">Quality Management System</h1>
           <p className="text-blue-200/60 mt-2">
-            Sign in to Quality Management System
+            Sign in to your account
           </p>
         </div>
 
