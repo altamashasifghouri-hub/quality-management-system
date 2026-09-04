@@ -185,16 +185,21 @@ export default function AuditSchedulePage() {
               {DAYS.map((d) => (<div key={d} className="bg-white/5 text-center py-2 text-xs font-medium text-blue-200/60">{d}</div>))}
               {calendarCells.map((cell) => {
                 const audits = schedulesByDate[cell.key] || [];
-                const branchIds = [...new Set(audits.map((a) => a.branch_id))];
+                const seen = new Set<string>();
+                const auditBranches = audits.filter((a) => { if (seen.has(a.branch_id)) return false; seen.add(a.branch_id); return true; });
                 const isSelected = selectedDay === cell.key;
                 const isToday = cell.key === toDateStr(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                 return (
                   <button key={cell.key} onClick={() => { if (cell.current) setSelectedDay(isSelected ? null : cell.key); }}
-                    className={`relative min-h-[72px] p-1.5 text-left transition-colors ${cell.current ? (isSelected ? "bg-blue-600/20 ring-1 ring-blue-500" : "bg-slate-800/50 hover:bg-white/5") : "bg-slate-900/30"}`}>
+                    className={`relative min-h-[72px] p-1 text-left transition-colors ${cell.current ? (isSelected ? "bg-blue-600/20 ring-1 ring-blue-500" : "bg-slate-800/50 hover:bg-white/5") : "bg-slate-900/30"}`}>
                     <span className={`text-xs font-medium ${cell.current ? (isToday ? "text-blue-400" : "text-white/70") : "text-white/20"}`}>{cell.day}</span>
-                    <div className="mt-1 flex flex-wrap gap-0.5">
-                      {branchIds.slice(0, 4).map((bid) => (<div key={bid} className={`w-2 h-2 rounded-full ${branchColorMap[bid] || "bg-gray-500"}`} />))}
-                      {branchIds.length > 4 && <span className="text-[9px] text-white/40">+{branchIds.length - 4}</span>}
+                    <div className="mt-0.5 space-y-0.5">
+                      {auditBranches.slice(0, 3).map((a) => (
+                        <div key={a.branch_id} className={`text-[9px] leading-tight px-1 py-0.5 rounded truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/30 text-white/90`}>
+                          {a.branch_name}
+                        </div>
+                      ))}
+                      {auditBranches.length > 3 && <div className="text-[9px] text-white/40 px-1">+{auditBranches.length - 3} more</div>}
                     </div>
                   </button>
                 );
