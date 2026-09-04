@@ -35,10 +35,12 @@ export default function AuditManagement() {
           <Link href="/audit/plan">
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all duration-200 cursor-pointer group text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4 group-hover:bg-blue-600/30 transition-colors">
-                <span className="text-blue-400 font-bold text-sm">9001</span>
+                <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+                </svg>
               </div>
-              <h3 className="text-white font-semibold mb-1">ISO 9001</h3>
-              <p className="text-xs text-blue-200/40">Create and manage ISO 9001:2015 audit plans</p>
+              <h3 className="text-white font-semibold mb-1">Audit Plan</h3>
+              <p className="text-xs text-blue-200/40">Create audit plans by certification standard</p>
             </div>
           </Link>
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 text-center opacity-40 cursor-not-allowed">
