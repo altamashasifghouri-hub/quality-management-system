@@ -13,7 +13,8 @@ export default async function Dashboard() {
     redirect("/auth/signin");
   }
 
-  const displayName = user.user_metadata?.full_name || user.email || "there";
+  const displayName =
+    user.user_metadata?.full_name || user.email?.split("@")[0] || "there";
 
   async function signOut() {
     "use server";
@@ -31,7 +32,7 @@ export default async function Dashboard() {
             <span className="text-white font-semibold">QMS</span>
           </Link>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-blue-200/60">{user.email}</span>
+            <span className="text-sm text-white font-medium">Admin</span>
             <Link
               href="/settings"
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white/70 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all duration-200"
@@ -68,60 +69,77 @@ export default async function Dashboard() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-16 text-center">
-        <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-blue-600/20 border border-blue-500/30 mb-6">
-          <svg
-            className="w-10 h-10 text-blue-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
-            />
-          </svg>
-        </div>
-        <h1 className="text-4xl font-bold text-white mb-2">
-          Welcome, {displayName}!
-        </h1>
-        <p className="text-lg text-blue-200/70 mb-12">
-          You are now signed in to the Quality Management System.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            {
-              title: "Audit Management",
-              desc: "Plan and execute quality audits",
-              icon: "M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z",
-            },
-          ].map((item) => (
-            <div
-              key={item.title}
-              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6"
+      <main className="max-w-7xl mx-auto px-6 py-16">
+        <div className="text-center mb-16">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-blue-600/20 border border-blue-500/30 mb-6">
+            <svg
+              className="w-10 h-10 text-blue-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
             >
-              <div className="inline-flex items-center justify-center w-11 h-11 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4">
-                <svg
-                  className="w-5 h-5 text-blue-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d={item.icon}
-                  />
-                </svg>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
+              />
+            </svg>
+          </div>
+          <h1 className="text-4xl font-bold text-white mb-2">
+            Welcome, {displayName}!
+          </h1>
+          <p className="text-lg text-blue-200/70">
+            You are now signed in to the Quality Management System.
+          </p>
+        </div>
+
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-2xl font-bold text-white mb-6 text-center">
+            Audit Management
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: "Audit Calendar",
+                desc: "View and schedule audit dates across teams",
+                icon: "M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5",
+              },
+              {
+                title: "Audit Planning",
+                desc: "Create and manage audit plans and checklists",
+                icon: "M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15a2.25 2.25 0 0 1 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z",
+              },
+              {
+                title: "Audit Report",
+                desc: "Generate and review audit findings and reports",
+                icon: "M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9ZM4.5 12.75a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75ZM4.5 15a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75ZM4.5 17.25a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75Z",
+              },
+            ].map((item) => (
+              <div
+                key={item.title}
+                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all duration-200 cursor-pointer group text-center"
+              >
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4 group-hover:bg-blue-600/30 transition-colors">
+                  <svg
+                    className="w-6 h-6 text-blue-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d={item.icon}
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-white font-semibold mb-1">{item.title}</h3>
+                <p className="text-sm text-blue-200/50">{item.desc}</p>
               </div>
-              <h3 className="text-white font-semibold mb-1">{item.title}</h3>
-              <p className="text-sm text-blue-200/50">{item.desc}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </main>
     </div>
