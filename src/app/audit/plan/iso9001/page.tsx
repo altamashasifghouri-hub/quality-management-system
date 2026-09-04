@@ -364,7 +364,7 @@ export default function AuditPlanPage() {
                   <div key={item} className="flex items-center gap-2 py-1.5">
                     <span className="text-sm text-white/70 flex-1">{item}</span>
                     <select value={editChecklist[item] || ""} onChange={(e) => setEditChecklist({ ...editChecklist, [item]: e.target.value })} className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
-                      <option value="" className="bg-slate-800">ΓÇö</option>
+                      <option value="" className="bg-slate-800">—</option>
                       <option value="Conforming" className="bg-slate-800">Conforming</option>
                       <option value="Non-conforming" className="bg-slate-800">Non-conforming</option>
                       <option value="Partial" className="bg-slate-800">Partial</option>
@@ -408,7 +408,7 @@ export default function AuditPlanPage() {
               <label className="block text-sm text-blue-200/70 mb-1">Select Branch Schedule</label>
               <select value={selectedSchedule || ""} onChange={(e) => setSelectedSchedule(e.target.value || null)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
                 <option value="" className="bg-slate-800">Choose a branch schedule...</option>
-                {availableSchedules.map((s) => (<option key={s.id} value={s.id} className="bg-slate-800">{s.branch_name} ({s.date_from} ΓåÆ {s.date_to})</option>))}
+                {availableSchedules.map((s) => (<option key={s.id} value={s.id} className="bg-slate-800">{s.branch_name} ({s.date_from} → {s.date_to})</option>))}
               </select>
               {selectedSched && selectedSched.departments.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -453,7 +453,7 @@ export default function AuditPlanPage() {
                         <div key={item} className="flex items-center gap-2 py-1.5">
                           <span className="text-sm text-white/70 flex-1">{item}</span>
                           <select value={checklist[item] || ""} onChange={(e) => setChecklist({ ...checklist, [item]: e.target.value })} className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
-                            <option value="" className="bg-slate-800">ΓÇö</option>
+                            <option value="" className="bg-slate-800">—</option>
                             <option value="Conforming" className="bg-slate-800">Conforming</option>
                             <option value="Non-conforming" className="bg-slate-800">Non-conforming</option>
                             <option value="Partial" className="bg-slate-800">Partial</option>
@@ -515,7 +515,7 @@ export default function AuditPlanPage() {
                             <h3 className="text-white font-semibold">{plan.title}</h3>
                             <span className={`px-2 py-0.5 text-xs rounded-full ${plan.overall_result === "Closed" ? "bg-green-500/20 text-green-300" : plan.overall_result === "Significant NC" ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300"}`}>{plan.overall_result}</span>
                           </div>
-                          {sched && <p className="text-xs text-blue-200/50 mt-1">{sched.branch_name} ┬╖ {sched.date_from} ΓåÆ {sched.date_to}{plan.audit_team ? ` ┬╖ Team: ${plan.audit_team}` : ""}</p>}
+                          {sched && <p className="text-xs text-blue-200/50 mt-1">{sched.branch_name} · {sched.date_from} → {sched.date_to}{plan.audit_team ? ` · Team: ${plan.audit_team}` : ""}</p>}
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
