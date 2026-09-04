@@ -2,12 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const pathname = usePathname();
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -24,17 +22,6 @@ export default function Navbar() {
           <span className="text-white font-semibold">QMS</span>
         </Link>
         <div className="flex items-center gap-4">
-          <Link
-            href="/audit"
-            className={`px-4 py-2 text-sm font-medium rounded-lg border border-white/10 transition-all duration-200 ${
-              pathname.startsWith("/audit")
-                ? "text-white bg-white/10"
-                : "text-white/70 hover:text-white bg-white/5 hover:bg-white/10"
-            }`}
-          >
-            Audit
-          </Link>
-
           <div className="relative" ref={ref}>
             <button
               onClick={() => setOpen(!open)}

@@ -44,7 +44,6 @@ export default function Dashboard() {
                 </svg>
               </div>
               <h3 className="text-white font-semibold mb-1">Audit Management</h3>
-              <p className="text-sm text-blue-200/50">Plan, schedule, and report on quality audits</p>
             </div>
           </Link>
         </div>

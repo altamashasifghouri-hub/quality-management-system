@@ -30,7 +30,6 @@ export default function AuditManagement() {
                 </svg>
               </div>
               <h3 className="text-white font-semibold mb-1">Audit Schedule</h3>
-              <p className="text-sm text-blue-200/50">View and schedule audit dates across departments</p>
             </div>
           </Link>
           {[
