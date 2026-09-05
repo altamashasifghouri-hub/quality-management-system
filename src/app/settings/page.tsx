@@ -126,7 +126,7 @@ export default function Settings() {
       <div className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <span className="text-white font-semibold">QMS</span>
+            <span className="text-white font-semibold">Quality Management System</span>
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-white font-medium">Admin</span>

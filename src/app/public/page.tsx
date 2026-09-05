@@ -8,7 +8,7 @@ export default function PublicView() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
             <QmsBrand compact />
-            <span className="text-white font-semibold">QMS</span>
+            <span className="text-white font-semibold">Quality Management System</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link

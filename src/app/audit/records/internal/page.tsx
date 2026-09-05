@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
 interface Branch { id: string; name: string; }
 interface Schedule { id: string; branch_id: string; date_from: string; date_to: string; departments: string[]; }
 interface AuditPlan {
@@ -41,7 +41,6 @@ export default function InternalRecords() {
   const [message, setMessage] = useState("");
 
   const [selectedPlanId, setSelectedPlanId] = useState("");
-  const [branchFilter, setBranchFilter] = useState("");
 
   const [notepad, setNotepad] = useState("");
   const [notepadSaved, setNotepadSaved] = useState(false);
@@ -86,7 +85,6 @@ export default function InternalRecords() {
 
   const sessionPlan = session ? plans.find((p) => p.id === session.plan_id) || null : null;
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || null;
-  const filteredPlans = branchFilter ? plans.filter((p) => p.branch_id === branchFilter) : plans;
 
   function planScheduleSummary(plan: AuditPlan) {
     const s = schedules.find((sc) => sc.id === plan.schedule_id);
@@ -186,7 +184,7 @@ export default function InternalRecords() {
       const merged = [...current];
       incoming.forEach((f) => {
         const key = `${f.department.toLowerCase()}|${f.detail.trim().toLowerCase()}`;
-        if (!existingKey.has(key)) { merged.push({ department: f.department, type: f.type, detail: f.detail, recommendation: f.recommendation, evidence: [] }); existingKey.add(key); }
+        if (!existingKey.has(key)) { merged.push({ department: f.department, type: f.type, detail: f.detail, recommendation: f.recommendation, evidence: [], resolved: false }); existingKey.add(key); }
       });
       const { error: updErr } = await supabase.from("internal_audits").update({ findings: merged, updated_at: new Date().toISOString() }).eq("id", sessionPlan.id);
       if (updErr) return showErr(updErr.message);
@@ -300,24 +298,16 @@ export default function InternalRecords() {
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 space-y-5">
             <h2 className="text-xl font-bold text-white">Start an Audit</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Branch (optional)</label>
-                <select value={branchFilter} onChange={(e) => { setBranchFilter(e.target.value); setSelectedPlanId(""); }} className={selectCls}>
-                  <option value="">All branches</option>
-                  {branches.map((b) => (<option key={b.id} value={b.id} className="bg-slate-800">{b.name}</option>))}
-                </select>
-              </div>
-              <div>
+            <div>
                 <label className={labelCls}>Audit Plan *</label>
                 <select value={selectedPlanId} onChange={(e) => setSelectedPlanId(e.target.value)} className={selectCls}>
                   <option value="">Select an audit plan</option>
-                  {filteredPlans.map((p) => (
+                  {plans.map((p) => (
                     <option key={p.id} value={p.id} className="bg-slate-800">{p.branch_name} — {p.title}</option>
                   ))}
                 </select>
+                <p className="text-xs text-blue-200/40 mt-1">The branch, dates and departments are fetched automatically from the plan.</p>
               </div>
-            </div>
 
             {selectedPlan && (
               <div className="bg-white/[0.03] border border-white/10 rounded-xl p-5">

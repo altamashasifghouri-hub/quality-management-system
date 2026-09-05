@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
 interface AuditPlan {
   id: string;
   title: string;
@@ -26,6 +26,19 @@ function severities(findings: Finding[]) {
   return s;
 }
 
+function planStatus(plan: AuditPlan) {
+  const total = plan.findings.length;
+  if (!total) return { label: "No Findings", cls: "text-blue-200/40 bg-white/5 border-white/10", done: 0, total, pct: null as null | number, clear: false };
+  const done = plan.findings.filter((f) => f.resolved === true).length;
+  const pct = Math.round((done / total) * 100);
+  const clear = done === total;
+  return {
+    label: clear ? "Clear" : "Unclear",
+    cls: clear ? "text-green-300 bg-green-500/10 border-green-500/30" : "text-amber-300 bg-amber-500/10 border-amber-500/30",
+    done, total, pct, clear,
+  };
+}
+
 function fmtDate(d: string | null) {
   if (!d) return "";
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -34,18 +47,29 @@ function fmtDate(d: string | null) {
 }
 
 const sevColor: Record<string, string> = {
-  Critical: "bg-red-500/20 text-red-300 border-red-500/30",
-  High: "bg-orange-500/20 text-orange-200 border-orange-500/30",
-  Medium: "bg-amber-500/20 text-amber-200 border-amber-500/30",
-  Low: "bg-blue-500/20 text-blue-200 border-blue-500/30",
+  Critical: "text-red-300 bg-red-500/20 border-red-500/30",
+  High: "text-orange-200 bg-orange-500/20 border-orange-500/30",
+  Medium: "text-amber-200 bg-amber-500/20 border-amber-500/30",
+  Low: "text-blue-200 bg-blue-500/20 border-blue-500/30",
+};
+const sevBg: Record<string, string> = {
+  Critical: "border-red-500/40 text-red-300",
+  High: "border-orange-500/40 text-orange-200",
+  Medium: "border-amber-500/40 text-amber-200",
+  Low: "border-blue-500/40 text-blue-200",
 };
 
 export default function AuditFindings() {
   const supabase = createClient();
   const [plans, setPlans] = useState<AuditPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+
+  function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
+  function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -63,6 +87,59 @@ export default function AuditFindings() {
   }, [supabase]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  function updateLocal(planId: string, findings: Finding[]) {
+    setPlans((prev) => prev.map((p) => (p.id === planId ? { ...p, findings } : p)));
+  }
+
+  async function persist(planId: string, findings: Finding[]) {
+    const { error: err } = await supabase.from("internal_audits").update({ findings, updated_at: new Date().toISOString() }).eq("id", planId);
+    if (err) showErr(err.message);
+  }
+
+  async function toggleResolved(planId: string, idx: number) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, resolved: !(f.resolved === true) } : f));
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+  }
+
+  async function changeType(planId: string, idx: number, type: string) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, type } : f));
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+  }
+
+  async function addEvidence(planId: string, idx: number, file: File | null) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan || !file) return;
+    if (!file.type.startsWith("image/")) return showErr("Evidence must be an image.");
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
+      return showErr(errJson?.error?.message || "Picture upload failed.");
+    }
+    const json = await res.json();
+    if (!json.url) return showErr("Picture upload failed.");
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: [...(f.evidence || []), json.url] } : f));
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+    showMsg("Picture added.");
+  }
+
+  async function removeEvidence(planId: string, idx: number, evIdx: number) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: (f.evidence || []).filter((_, j) => j !== evIdx) } : f));
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+  }
 
   const branches: { name: string; plans: AuditPlan[] }[] = [];
   const branchMap = new Map<string, AuditPlan[]>();
@@ -85,7 +162,10 @@ export default function AuditFindings() {
         </div>
 
         <h1 className="text-3xl font-bold text-white mb-2">Findings and Evidences</h1>
-        <p className="text-blue-200/60 mb-8">Generated findings per audit, with evidence for each issue</p>
+        <p className="text-blue-200/60 mb-2">Mark findings resolved as you fix them — an audit is Clear when everything is resolved</p>
+
+        {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
+        {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
 
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
@@ -128,6 +208,7 @@ export default function AuditFindings() {
                   <div className="divide-y divide-white/5">
                     {group.plans.length === 0 && <p className="text-blue-200/40 px-6 py-8 text-sm">No audits in this branch.</p>}
                     {group.plans.map((plan) => {
+                      const st = planStatus(plan);
                       const s = severities(plan.findings);
                       return (
                         <div key={plan.id}>
@@ -141,7 +222,22 @@ export default function AuditFindings() {
                                 {[plan.document_number, fmtDate(plan.date_of_plan), plan.audit_period].filter(Boolean).join(" · ") || "No date"}
                               </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-3">
+                              {st.pct !== null ? (
+                                <>
+                                  <span className={`px-3 py-1 text-xs font-medium rounded-full border ${st.cls}`}>
+                                    {st.label}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-28 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                      <div className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all" style={{ width: `${st.pct}%` }} />
+                                    </div>
+                                    <span className="text-xs text-white/60 whitespace-nowrap">{st.done}/{st.total} · {st.pct}%</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <span className={`px-3 py-1 text-xs font-medium rounded-full border ${st.cls}`}>{st.label}</span>
+                              )}
                               <span className="text-xs text-blue-200/50">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
                               <svg className={`w-4 h-4 text-blue-400 transition-transform ${expandedPlan === plan.id ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
                             </div>
@@ -153,35 +249,74 @@ export default function AuditFindings() {
                                 {SEVERITIES.map((sev) => (
                                   <span key={sev} className={`px-3 py-1 text-xs rounded-full border ${sevColor[sev]}`}>{sev}: {s[sev]}</span>
                                 ))}
+                                <span className={`px-3 py-1 text-xs rounded-full border ${st.cls}`}>{st.label} · {st.pct === null ? "—" : `${st.pct}%`}</span>
                               </div>
 
                               {plan.findings.length === 0 ? (
                                 <p className="text-sm text-blue-200/40">No findings generated for this audit yet. Go to Audit Records → Internal to generate them from your notes.</p>
                               ) : (
                                 <div className="space-y-3">
-                                  {plan.findings.map((f, i) => (
-                                    <div key={i} className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-                                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                                        <span className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[f.type] || sevColor.Medium}`}>{f.type}</span>
-                                        <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
-                                        {f.recommendation && <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(i + 1).padStart(2, "0")}</span>}
-                                      </div>
-                                      <p className="text-sm text-white/80">{f.detail}</p>
-                                      {f.recommendation && (
-                                        <p className="text-xs text-blue-200/60 mt-2"><span className="text-blue-300">Recommendation:</span> {f.recommendation}</p>
-                                      )}
-                                      {f.evidence && f.evidence.length > 0 && (
-                                        <div className="flex flex-wrap gap-2 mt-3">
-                                          {f.evidence.map((url, j) => (
-                                            <a key={j} href={url} target="_blank" rel="noopener noreferrer" className="block">
-                                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                                              <img src={url} alt={`Evidence ${j + 1}`} className="w-24 h-20 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" />
-                                            </a>
-                                          ))}
+                                  {plan.findings.map((f, i) => {
+                                    const resolved = f.resolved === true;
+                                    return (
+                                      <div key={i} className={`bg-white/[0.03] border rounded-xl p-4 transition-colors ${resolved ? "border-green-500/30" : "border-white/10"}`}>
+                                        <div className="flex items-start justify-between gap-4">
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                              <select
+                                                value={f.type}
+                                                onChange={(e) => changeType(plan.id, i, e.target.value)}
+                                                className={`px-2 py-1 text-xs rounded-lg border bg-slate-900 [color-scheme:dark] ${sevBg[f.type] || sevBg.Medium}`}
+                                              >
+                                                {SEVERITIES.map((sev) => <option key={sev} value={sev} className="bg-slate-900">{sev}</option>)}
+                                              </select>
+                                              <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
+                                              <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(i + 1).padStart(2, "0")}</span>
+                                            </div>
+                                            <p className={`text-sm ${resolved ? "text-white/50 line-through" : "text-white/80"}`}>{f.detail}</p>
+                                            {f.recommendation && (
+                                              <p className="text-xs text-blue-200/60 mt-2"><span className="text-blue-300">Recommendation:</span> {f.recommendation}</p>
+                                            )}
+
+                                            <div className="flex flex-wrap items-center gap-2 mt-3">
+                                              <div className="flex flex-wrap gap-2">
+                                                {(f.evidence || []).map((url, j) => (
+                                                  <div key={j} className="relative group">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-20 h-16 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => removeEvidence(plan.id, i, j)}
+                                                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] leading-none hidden group-hover:flex items-center justify-center"
+                                                    >
+                                                      ×
+                                                    </button>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                              <label className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] cursor-pointer text-center">
+                                                + Picture
+                                                <input type="file" accept="image/*" className="hidden" onChange={(e) => { addEvidence(plan.id, i, e.target.files?.[0] || null); e.target.value = ""; }} />
+                                              </label>
+                                            </div>
+                                          </div>
+
+                                          <div className="shrink-0 flex flex-col items-end gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleResolved(plan.id, i)}
+                                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-colors ${resolved ? "bg-green-500/15 border-green-500/40 text-green-300" : "bg-white/5 border-white/15 text-white/60 hover:text-white"}`}
+                                            >
+                                              <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${resolved ? "bg-green-500 border-green-500 text-white" : "border-white/30 text-transparent"}`}>
+                                                ✓
+                                              </span>
+                                              {resolved ? "Resolved" : "Unresolved"}
+                                            </button>
+                                          </div>
                                         </div>
-                                      )}
-                                    </div>
-                                  ))}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
