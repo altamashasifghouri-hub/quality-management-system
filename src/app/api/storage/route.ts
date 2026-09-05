@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -78,10 +79,25 @@ async function cloudinaryResources() {
 }
 
 async function cloudinaryDelete(resourceType: string, publicId: string) {
-  const path = publicId.split("/").map(encodeURIComponent).join("/");
+  const apiKey = process.env.CLOUDINARY_API_KEY || "";
+  const apiSecret = process.env.CLOUDINARY_API_SECRET || "";
+  const timestamp = Math.round(Date.now() / 1000);
+  const params = `public_id=${publicId}&timestamp=${timestamp}&type=upload`;
+  const signature = createHash("sha1").update(`${params}${apiSecret}`).digest("hex");
+  const body = new URLSearchParams({
+    public_id: publicId,
+    timestamp: String(timestamp),
+    api_key: apiKey,
+    signature,
+    type: "upload",
+  });
   const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/resources/${resourceType}/upload/${path}`,
-    { method: "DELETE", headers: { Authorization: cloudinaryBasic() } }
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/destroy`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    }
   );
   if (!res.ok) throw new Error(`Cloudinary delete failed: ${res.status} ${await res.text()}`);
   return res.json();
