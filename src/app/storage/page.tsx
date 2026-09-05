@@ -35,8 +35,8 @@ function fmtDate(s: string) {
 
 export default function StoragePage() {
   const [tables, setTables] = useState<TableInfo[]>([]);
-  const [folders, setFolders] = useState<{ plan: DriveFile[]; report: DriveFile[] }>({ plan: [], report: [] });
-  const [activeType, setActiveType] = useState<"plan" | "report">("plan");
+  const [folders, setFolders] = useState<{ plan: DriveFile[]; report: DriveFile[]; capa: DriveFile[] }>({ plan: [], report: [], capa: [] });
+  const [activeType, setActiveType] = useState<"plan" | "report" | "capa">("plan");
   const [driveInfo, setDriveInfo] = useState<{ storageBytes: number; storageLimit: number; quotaUsage: number } | null>(null);
   const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -70,7 +70,7 @@ export default function StoragePage() {
             storageLimit: json.storageLimit || 0,
             quotaUsage: json.quotaUsage || 0,
           });
-          setFolders({ plan: json.folders?.plan || [], report: json.folders?.report || [] });
+          setFolders({ plan: json.folders?.plan || [], report: json.folders?.report || [], capa: json.folders?.capa || [] });
         }
       } else {
         const body = await dRes.json().catch(() => ({}));
@@ -92,7 +92,7 @@ export default function StoragePage() {
 
   const dbBytes = tables.length ? tables[0].db_bytes : 0;
   const files = folders[activeType];
-  const totalFiles = folders.plan.length + folders.report.length;
+  const totalFiles = folders.plan.length + folders.report.length + folders.capa.length;
   const dBytes = driveInfo?.storageBytes || 0;
   const dLimit = driveInfo?.storageLimit || 0;
   const dQuota = driveInfo?.quotaUsage || 0;
@@ -105,7 +105,7 @@ export default function StoragePage() {
     setBusy(false);
     if (!res.ok) return showErr("Could not disconnect.");
     setConnected(null);
-    setFolders({ plan: [], report: [] });
+    setFolders({ plan: [], report: [], capa: [] });
     showMsg("Disconnected.");
   }
 
@@ -137,6 +137,7 @@ export default function StoragePage() {
     const all = [
       ...folders.plan.map((f) => ({ f, prefix: "Audit Plan" })),
       ...folders.report.map((f) => ({ f, prefix: "Audit Report" })),
+      ...folders.capa.map((f) => ({ f, prefix: "CAPA" })),
     ];
     if (all.length === 0) return;
     setBusy(true);
@@ -269,11 +270,14 @@ export default function StoragePage() {
                 <button onClick={() => setActiveType("report")} className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${activeType === "report" ? "bg-blue-600 text-white" : "bg-white/10 text-blue-200/70 hover:bg-white/15"}`}>
                   Audit Report {folders.report.length ? `(${folders.report.length})` : ""}
                 </button>
+                <button onClick={() => setActiveType("capa")} className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${activeType === "capa" ? "bg-blue-600 text-white" : "bg-white/10 text-blue-200/70 hover:bg-white/15"}`}>
+                  CAPA & R {folders.capa.length ? `(${folders.capa.length})` : ""}
+                </button>
               </div>
 
               <div className="max-h-[380px] overflow-y-auto">
                 {files.length === 0 ? (
-                  <p className="text-blue-200/40 text-center py-10 text-sm">No files stored in the {activeType === "plan" ? "Audit Plan" : "Audit Report"} folder yet.</p>
+                  <p className="text-blue-200/40 text-center py-10 text-sm">No files stored in the {activeType === "plan" ? "Audit Plan" : activeType === "report" ? "Audit Report" : "CAPA & R"} folder yet.</p>
                 ) : (
                   <div className="divide-y divide-white/5">
                     {files.map((f) => (

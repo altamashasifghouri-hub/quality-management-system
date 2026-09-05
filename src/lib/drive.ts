@@ -1,6 +1,7 @@
 export function driveFolderId(kind: string = "plan") {
   if (kind === "report") return process.env.GOOGLE_DRIVE_REPORT_FOLDER_ID || "";
   if (kind === "evidence") return process.env.GOOGLE_DRIVE_EVIDENCE_FOLDER_ID || "";
+  if (kind === "capa") return process.env.GOOGLE_DRIVE_CAPA_FOLDER_ID || "";
   return process.env.GOOGLE_DRIVE_PLAN_FOLDER_ID || "";
 }
 
