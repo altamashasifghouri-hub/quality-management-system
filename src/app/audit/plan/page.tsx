@@ -27,8 +27,15 @@ export default function AuditPlan() {
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4 group-hover:bg-blue-600/30 transition-colors">
                 <span className="text-blue-400 font-bold text-sm">9001</span>
               </div>
-              <h3 className="text-white font-semibold mb-1">ISO 9001</h3>
-              <p className="text-xs text-blue-200/40">Create and manage ISO 9001:2015 audit plans</p>
+              <h3 className="text-white font-semibold">ISO 9001</h3>
+            </div>
+          </Link>
+          <Link href="/audit/plan/internal">
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all duration-200 cursor-pointer group text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-purple-600/20 border border-purple-500/30 mb-4 group-hover:bg-purple-600/30 transition-colors">
+                <span className="text-purple-400 font-bold text-sm">INT</span>
+              </div>
+              <h3 className="text-white font-semibold">Internal Standard</h3>
             </div>
           </Link>
         </div>
