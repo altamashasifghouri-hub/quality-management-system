@@ -28,6 +28,7 @@ export default function AuditSchedulePage() {
   const [allDepts, setAllDepts] = useState<Department[]>([]);
   const [schedules, setSchedules] = useState<AuditSchedule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [planBySchedule, setPlanBySchedule] = useState<Record<string, "iso" | "internal">>({});
 
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -48,6 +49,12 @@ export default function AuditSchedulePage() {
     const { data: b } = await supabase.from("branches").select("id,name").order("name");
     const { data: d } = await supabase.from("departments").select("id,name,branch_id").order("name");
     const { data: s } = await supabase.from("audit_schedules").select("*, branches(name)").order("date_from");
+    const { data: isoPlanRows } = await supabase.from("audit_plans").select("schedule_id");
+    const { data: intPlanRows } = await supabase.from("internal_audits").select("schedule_id");
+    const pmap: Record<string, "iso" | "internal"> = {};
+    (isoPlanRows || []).forEach((r: any) => { if (r.schedule_id) pmap[r.schedule_id] = "iso"; });
+    (intPlanRows || []).forEach((r: any) => { if (r.schedule_id && !pmap[r.schedule_id]) pmap[r.schedule_id] = "internal"; });
+    setPlanBySchedule(pmap);
     setBranches(b || []);
     setAllDepts(d || []);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,6 +92,13 @@ export default function AuditSchedulePage() {
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 3000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 4000); }
+
+  function planBadge(schedId: string) {
+    const kind = planBySchedule[schedId];
+    if (kind === "iso") return <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">ISO 9001</span>;
+    if (kind === "internal") return <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Internal</span>;
+    return <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 border border-white/10 text-blue-200/40">No plan yet</span>;
+  }
 
   function toggleDept(deptId: string) {
     setSelectedDepts((prev) => prev.includes(deptId) ? prev.filter((d) => d !== deptId) : [...prev, deptId]);
@@ -219,6 +233,7 @@ export default function AuditSchedulePage() {
                 <div className="flex items-center gap-2 mb-1">
                   <div className={`w-2 h-2 rounded-full ${branchColorMap[s.branch_id] || "bg-gray-500"}`} />
                   <span className="text-sm font-medium text-white">{s.branch_name}</span>
+                  {planBadge(s.id)}
                 </div>
                 <div className="text-xs text-blue-200/60 ml-4">{s.date_from} → {s.date_to}</div>
                 <div className="text-xs text-blue-200/40 ml-4 mt-1 flex flex-wrap gap-1">
@@ -297,6 +312,8 @@ export default function AuditSchedulePage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
                         <span className="text-white font-medium">{s.branch_name}</span>
+                        {planBadge(s.id)}
+                        {planBySchedule[s.id] && <span className="text-xs text-blue-200/40">· 1 plan</span>}
                         <span className={`px-2 py-0.5 text-xs rounded-full ${s.status === "Completed" ? "bg-green-500/20 text-green-300" : s.status === "In Progress" ? "bg-amber-500/20 text-amber-300" : s.status === "Scheduled" ? "bg-blue-500/20 text-blue-300" : "bg-white/10 text-white/60"}`}>{s.status}</span>
                       </div>
                       <div className="flex flex-wrap gap-1 mt-1">

@@ -33,6 +33,7 @@ interface CapaPlan {
   audit_period: string | null;
   signature: string | null;
   prepared_by: string | null;
+  source: "internal" | "iso";
   findings: CapaFinding[];
 }
 
@@ -170,17 +171,26 @@ export default function CapaPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: p }, { data: b }, { data: settingsData }] = await Promise.all([
+    const [{ data: p }, { data: b }, { data: settingsData }, { data: isoPlans }, { data: schedData }] = await Promise.all([
       supabase.from("internal_audits").select("*").order("created_at", { ascending: false }),
       supabase.from("branches").select("*"),
       supabase.from("settings").select("*").limit(1).maybeSingle(),
+      supabase.from("audit_plans").select("*").order("created_at", { ascending: false }),
+      supabase.from("audit_schedules").select("*"),
     ]);
     const branchName = new Map<string, string>((b || []).map((r: any) => [r.id, r.name]));
-    setPlans((p || []).map((r: any) => ({
+    const schedBranch = new Map<string, string>((schedData || []).map((sc: any) => [sc.id, branchName.get(sc.branch_id) || ""]));
+    const intPlans: CapaPlan[] = (p || []).map((r: any) => ({
       id: r.id, title: r.title, branch_id: r.branch_id, branch_name: branchName.get(r.branch_id) || "Unassigned",
       document_number: r.document_number, date_of_plan: r.date_of_plan, audit_period: r.audit_period,
-      signature: r.signature, prepared_by: r.prepared_by, findings: r.findings || [],
-    })));
+      signature: r.signature, prepared_by: r.prepared_by, source: "internal", findings: r.findings || [],
+    }));
+    const isoSrc: CapaPlan[] = (isoPlans || []).map((r: any) => ({
+      id: r.id, title: r.title, branch_id: r.branch_id, branch_name: schedBranch.get(r.schedule_id) || "Unassigned",
+      document_number: r.document_number, date_of_plan: r.date_of_plan, audit_period: r.audit_period,
+      signature: null, prepared_by: r.prepared_by, source: "iso", findings: r.findings || [],
+    }));
+    setPlans([...intPlans, ...isoSrc]);
     if (settingsData) setSettings({ hr_name: settingsData.hr_name || "", ceo_name: settingsData.ceo_name || "" });
     setLoading(false);
   }, [supabase]);
@@ -200,7 +210,9 @@ export default function CapaPage() {
   }
 
   async function persistFindings(planId: string, findings: CapaFinding[]) {
-    const { error: err } = await supabase.from("internal_audits").update({ findings, updated_at: new Date().toISOString() }).eq("id", planId);
+    const plan = plans.find((p) => p.id === planId);
+    const table = plan?.source === "iso" ? "audit_plans" : "internal_audits";
+    const { error: err } = await supabase.from(table).update({ findings, updated_at: new Date().toISOString() }).eq("id", planId);
     return err;
   }
 
@@ -423,7 +435,7 @@ export default function CapaPage() {
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" /></div>
         ) : plans.length === 0 ? (
-          <p className="text-blue-200/40 text-center py-16">No findings yet. Record an audit and generate findings first.</p>
+          <p className="text-blue-200/40 text-center py-16">No findings yet. Record an audit (Internal or ISO 9001), generate findings, and they will appear here grouped under their standard.</p>
         ) : (
           <div className="space-y-8">
             {branchGroups.map((group) => {
@@ -438,7 +450,12 @@ export default function CapaPage() {
                         <div key={plan.id} className="space-y-4">
                           <div className="bg-white/[0.04] border border-white/10 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <h3 className="text-white font-medium">{plan.title}</h3>
+                              <h3 className="text-white font-medium flex items-center gap-2 flex-wrap">
+                                {plan.title}
+                                <span className={`px-2 py-0.5 text-[10px] rounded-full ${plan.source === "iso" ? "bg-blue-500/20 border border-blue-500/30 text-blue-200" : "bg-purple-500/20 border border-purple-500/30 text-purple-200"}`}>
+                                  {plan.source === "iso" ? "ISO 9001" : "Internal"}
+                                </span>
+                              </h3>
                               <p className="text-xs text-blue-200/40 mt-0.5">{[plan.document_number, plan.date_of_plan, plan.audit_period].filter(Boolean).join(" · ")}</p>
                             </div>
                             <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-1 rounded-full border border-purple-500/30">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>

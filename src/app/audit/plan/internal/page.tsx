@@ -127,6 +127,7 @@ export default function InternalAuditPlan() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<PlanForm>(emptyForm());
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
+  const [usedIsoScheds, setUsedIsoScheds] = useState<Set<string>>(new Set());
 
   const [viewingPlan, setViewingPlan] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -140,6 +141,8 @@ export default function InternalAuditPlan() {
     const { data: deptData } = await supabase.from("departments").select("*").order("created_at", { ascending: true });
     const { data: schedData } = await supabase.from("audit_schedules").select("*").order("date_from", { ascending: true });
     const { data: planData } = await supabase.from("internal_audits").select("*").order("created_at", { ascending: false });
+    const { data: isoPlanData } = await supabase.from("audit_plans").select("schedule_id");
+    setUsedIsoScheds(new Set((isoPlanData || []).map((r: any) => r.schedule_id).filter(Boolean)));
 
     const deptMap = new Map<string, Department[]>();
     (deptData || []).forEach((d: any) => {
@@ -170,7 +173,13 @@ export default function InternalAuditPlan() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const selBranch = branches.find((b) => b.id === form.branch_id);
-  const branchSchedules = form.branch_id ? schedules.filter((s) => s.branch_id === form.branch_id) : [];
+  const editingSchedId = editingPlan ? (plans.find((p) => p.id === editingPlan)?.schedule_id || null) : null;
+  const occupiedScheduleIds = new Set<string>();
+  plans.forEach((p) => { if (p.schedule_id && p.id !== editingPlan) occupiedScheduleIds.add(p.schedule_id); });
+  usedIsoScheds.forEach((id) => { if (id !== editingSchedId) occupiedScheduleIds.add(id); });
+  const branchSchedules = form.branch_id
+    ? schedules.filter((s) => s.branch_id === form.branch_id && !occupiedScheduleIds.has(s.id))
+    : [];
   const selSchedule = form.schedule_id ? schedules.find((s) => s.id === form.schedule_id) : null;
 
   function setF(patch: Partial<PlanForm>) { setForm((prev) => ({ ...prev, ...patch })); }
@@ -214,6 +223,7 @@ export default function InternalAuditPlan() {
     if (!form.title.trim()) return showErr("Enter an Audit Title.");
     if (!form.branch_id) return showErr("Select a Branch.");
     if (!form.schedule_id) return showErr("An audit must be scheduled in the calendar first. Select a schedule.");
+    if (occupiedScheduleIds.has(form.schedule_id)) return showErr("That schedule already has an audit plan (Internal or ISO 9001) — only one plan per schedule.");
     if (form.departments.length === 0) return showErr("Select at least one department.");
     if (!form.prepared_by.trim()) return showErr("Enter Prepared by.");
     if (!form.date_of_plan) return showErr("Enter Date of Plan.");
@@ -564,7 +574,7 @@ export default function InternalAuditPlan() {
               </select>
               {!form.branch_id && <p className="text-xs text-blue-200/40 mt-1">Select a branch first to see its scheduled audits.</p>}
               {form.branch_id && branchSchedules.length === 0 && (
-                <p className="text-xs text-amber-300/70 mt-1">No schedules found for this branch. Go to Audit Schedule to schedule it on the calendar first.</p>
+                <p className="text-xs text-amber-300/70 mt-1">No free schedules for this branch. Go to Audit Schedule to schedule it on the calendar first (one plan per schedule, Internal or ISO 9001).</p>
               )}
             </div>
 
@@ -689,6 +699,7 @@ export default function InternalAuditPlan() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="text-lg font-semibold text-white">{plan.title}</h3>
+                      <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Internal</span>
                       <span className={`px-2 py-0.5 text-xs rounded-full ${statusBadge(plan.status)}`}>{plan.status}</span>
                       <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full">{plan.branch_name}</span>
                     </div>

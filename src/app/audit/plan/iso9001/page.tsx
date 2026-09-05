@@ -99,11 +99,14 @@ export default function AuditPlanPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [usedInternalScheds, setUsedInternalScheds] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     const { data: s } = await supabase.from("audit_schedules").select("*, branches(name)").order("date_from");
     const { data: p } = await supabase.from("audit_plans").select("*").order("created_at", { ascending: false });
+    const { data: internal } = await supabase.from("internal_audits").select("schedule_id");
+    setUsedInternalScheds(new Set((internal || []).map((r: any) => r.schedule_id).filter(Boolean)));
     setSchedules((s || []).map((r: any) => ({
       id: r.id, branch_id: r.branch_id, date_from: r.date_from, date_to: r.date_to,
       auditor: r.auditor, status: r.status, notes: r.notes,
@@ -126,7 +129,8 @@ export default function AuditPlanPage() {
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 4000); }
 
   const scheduleMap = Object.fromEntries(schedules.map((s) => [s.id, s]));
-  const plansWithPlan = new Set(plans.map((p) => p.schedule_id));
+  const plansWithPlan = new Set(plans.map((p) => p.schedule_id).filter(Boolean));
+  usedInternalScheds.forEach((id) => plansWithPlan.add(id));
   const availableSchedules = schedules.filter((s) => !plansWithPlan.has(s.id));
   const selectedSched = selectedSchedule ? scheduleMap[selectedSchedule] : null;
 
@@ -397,6 +401,7 @@ export default function AuditPlanPage() {
                         <div>
                           <div className="flex items-center gap-3">
                             <h3 className="text-white font-semibold">{plan.title}</h3>
+                            <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">ISO 9001</span>
                             <span className={`px-2 py-0.5 text-xs rounded-full ${plan.overall_result === "Closed" ? "bg-green-500/20 text-green-300" : plan.overall_result === "Significant NC" ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300"}`}>{plan.overall_result}</span>
                           </div>
                           {sched && <p className="text-xs text-blue-200/50 mt-1">{sched.branch_name} · {sched.date_from} → {sched.date_to}{plan.audit_team ? ` · Team: ${plan.audit_team}` : ""}</p>}

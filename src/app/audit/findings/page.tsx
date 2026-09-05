@@ -68,6 +68,7 @@ export default function AuditFindings() {
   const [message, setMessage] = useState("");
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [tab, setTab] = useState<"all" | "internal" | "iso">("all");
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
@@ -155,7 +156,8 @@ export default function AuditFindings() {
 
   const branches: { name: string; plans: AuditPlan[] }[] = [];
   const branchMap = new Map<string, AuditPlan[]>();
-  plans.forEach((p) => {
+  const visiblePlans = tab === "all" ? plans : plans.filter((p) => p.source === tab);
+  visiblePlans.forEach((p) => {
     const list = branchMap.get(p.branch_name) || [];
     list.push(p);
     branchMap.set(p.branch_name, list);
@@ -174,7 +176,27 @@ export default function AuditFindings() {
         </div>
 
         <h1 className="text-3xl font-bold text-white mb-2">Findings and Evidences</h1>
-        <p className="text-blue-200/60 mb-2">Mark findings resolved as you fix them — an audit is Clear when everything is resolved</p>
+        <p className="text-blue-200/60 mb-6">Mark findings resolved as you fix them — an audit is Clear when everything is resolved</p>
+
+        <div className="flex flex-wrap gap-2 mb-6">
+          {([["all", "All"], ["internal", "Internal"], ["iso", "ISO 9001"]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => { setTab(key); setExpandedBranch(null); setExpandedPlan(null); }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                tab === key
+                  ? key === "iso"
+                    ? "bg-blue-600/30 border-blue-500/40 text-blue-200"
+                    : key === "internal"
+                    ? "bg-purple-600/30 border-purple-500/40 text-purple-200"
+                    : "bg-white/10 border-white/30 text-white"
+                  : "bg-white/5 border-white/10 text-blue-200/60 hover:bg-white/10"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
