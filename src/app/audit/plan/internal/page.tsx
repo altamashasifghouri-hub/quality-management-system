@@ -304,10 +304,10 @@ export default function InternalAuditPlan() {
         const logoUrl = await loadImageData(LOGO);
         const logoW = 40;
         const logoH = 28;
-        doc.addImage(logoUrl, "PNG", margin, y, logoW, logoH);
+        doc.addImage(logoUrl, "PNG", (pageWidth - logoW) / 2, y, logoW, logoH);
       } catch { /* logo unavailable */ }
 
-      y += 34;
+      y += 42;
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
       doc.text("INTERNAL AUDIT PLAN", pageWidth / 2, y, { align: "center" });
@@ -717,10 +717,10 @@ export default function InternalAuditPlan() {
             </div>
 
             <div className="bg-white text-slate-900 rounded-2xl p-10 shadow-2xl">
-              <div className="flex items-center justify-between border-b-2 border-blue-600 pb-4 mb-6">
+              <div className="text-center border-b-2 border-blue-600 pb-4 mb-6">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={LOGO} alt="Brand logo" className="h-14" />
-                <h1 className="text-2xl font-bold text-center">INTERNAL AUDIT PLAN</h1>
+                <img src={LOGO} alt="Brand logo" className="h-16 mx-auto mb-3" />
+                <h1 className="text-2xl font-bold">INTERNAL AUDIT PLAN</h1>
               </div>
 
               <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm mb-6">
