@@ -116,7 +116,9 @@ export async function GET(req: Request) {
     }
     if (source === "cloudinary") {
       const [usage, resources] = await Promise.all([cloudinaryUsage(), cloudinaryResources()]);
-      return NextResponse.json({ usage, resources });
+      const storageBytes = (resources as any[]).reduce((sum, r) => sum + (r.bytes || 0), 0);
+      const storageLimit = usage?.plan === "Free" ? 25 * 1024 * 1024 : (usage?.storage?.limit || 0);
+      return NextResponse.json({ usage, resources, storageBytes, storageLimit, plan: usage?.plan || "Free" });
     }
     return NextResponse.json({ error: "Unknown source" }, { status: 400 });
   } catch (e: any) {

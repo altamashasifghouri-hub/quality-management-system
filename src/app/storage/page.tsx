@@ -22,11 +22,9 @@ interface CloudinaryResource {
 }
 
 interface CloudinaryUsage {
-  storage?: {
-    usage?: { bytes?: number; resources?: number };
-    limit?: number;
-    used_percent?: number;
-  };
+  plan?: string;
+  storageBytes: number;
+  storageLimit: number;
 }
 
 function fmtBytes(bytes: number) {
@@ -63,7 +61,7 @@ export default function StoragePage() {
       else showErr("Could not load Supabase tables.");
       if (cRes.ok) {
         const json = await cRes.json();
-        setUsage(json.usage);
+        setUsage({ plan: json.plan || "Free", storageBytes: json.storageBytes || 0, storageLimit: json.storageLimit || 0 });
         setResources(json.resources || []);
       } else showErr("Could not load Cloudinary storage.");
     } catch {
@@ -76,10 +74,9 @@ export default function StoragePage() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const dbBytes = tables.length ? tables[0].db_bytes : 0;
-  const cStorage = usage?.storage;
-  const cBytes = cStorage?.usage?.bytes || 0;
-  const cLimit = cStorage?.limit || 0;
-  const cPct = cStorage?.used_percent ?? (cLimit ? (cBytes / cLimit) * 100 : 0);
+  const cBytes = usage?.storageBytes || 0;
+  const cLimit = usage?.storageLimit || 0;
+  const cPct = cLimit ? (cBytes / cLimit) * 100 : 0;
 
   async function deleteResource(r: CloudinaryResource) {
     if (!confirm(`Delete "${r.public_id}"?`)) return;
