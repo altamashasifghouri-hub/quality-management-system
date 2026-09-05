@@ -11,7 +11,7 @@ interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; branch_manager: string | null; locations: string[] | null; departments: Department[]; }
 interface AuditSchedule { id: string; branch_id: string; date_from: string; date_to: string; departments: string[]; }
 interface SettingsRow { id: number; hr_name: string; ceo_name: string; }
-interface Finding { department: string; type: string; detail: string; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; }
 
 interface PlanRow {
   id: string;
@@ -307,6 +307,34 @@ export default function InternalAuditReport() {
     showMsg("Report deleted.");
     setViewingReportId(null); setEditingReportId(null);
     fetchData();
+  }
+
+  async function addEvidence(findingsIndex: number, file: File | null) {
+    if (!file || !form.audit_id) return;
+    if (!file.type.startsWith("image/")) return showErr("Evidence must be an image.");
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
+      return showErr(errJson?.error?.message || "Evidence upload failed.");
+    }
+    const json = await res.json();
+    if (!json.url) return showErr("Evidence upload failed.");
+    const updated = form.findings.map((f, i) => (i === findingsIndex ? { ...f, evidence: [...(f.evidence || []), json.url] } : f));
+    setF({ findings: updated });
+    const { error: err } = await supabase.from("internal_audits").update({ findings: updated, updated_at: new Date().toISOString() }).eq("id", form.audit_id);
+    if (err) return showErr(err.message);
+    showMsg("Evidence added.");
+  }
+
+  async function removeEvidence(findingsIndex: number, evIndex: number) {
+    const updated = form.findings.map((f, i) => (i === findingsIndex ? { ...f, evidence: (f.evidence || []).filter((_, j) => j !== evIndex) } : f));
+    setF({ findings: updated });
+    const { error: err } = await supabase.from("internal_audits").update({ findings: updated, updated_at: new Date().toISOString() }).eq("id", form.audit_id);
+    if (err) return showErr(err.message);
+    showMsg("Evidence removed.");
   }
 
   function loadImageData(url: string): Promise<string> {
@@ -709,9 +737,9 @@ export default function InternalAuditReport() {
             </div>
 
             <div>
-              <span className="block text-sm text-blue-200/60 mb-2">Findings from the audit plan (read-only, used in the report)</span>
+              <span className="block text-sm text-blue-200/60 mb-2">Findings generated for this audit (used in the report) — add image evidence for each issue</span>
               {form.findings.length === 0 ? (
-                <p className="text-xs text-blue-200/40">No findings on this plan.</p>
+                <p className="text-xs text-blue-200/40">No findings on this plan yet. Generate them from Audit Records → Internal.</p>
               ) : (
                 <>
                   {(() => {
@@ -725,21 +753,45 @@ export default function InternalAuditReport() {
                       </div>
                     );
                   })()}
-                  <div className="max-h-48 overflow-auto rounded-lg border border-white/10">
+                  <div className="max-h-72 overflow-auto rounded-lg border border-white/10">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-white/10 text-left text-xs text-blue-200/60">
+                        <tr className="bg-white/10 text-left text-xs text-blue-200/60 sticky top-0">
                           <th className="px-3 py-2 font-medium">Department</th>
                           <th className="px-3 py-2 font-medium">Severity</th>
                           <th className="px-3 py-2 font-medium">Detail</th>
+                          <th className="px-3 py-2 font-medium">Evidence</th>
                         </tr>
                       </thead>
                       <tbody>
                         {form.findings.map((f, i) => (
-                          <tr key={i} className="border-t border-white/5">
-                            <td className="px-3 py-2 text-white/80">{f.department}</td>
-                            <td className="px-3 py-2 text-white/80">{f.type}</td>
+                          <tr key={i} className="border-t border-white/5 align-top">
+                            <td className="px-3 py-2 text-white/80 whitespace-nowrap">{f.department}</td>
+                            <td className="px-3 py-2 text-white/80 whitespace-nowrap">{f.type}</td>
                             <td className="px-3 py-2 text-white/60">{f.detail}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-start gap-2">
+                                <div className="flex flex-wrap gap-1.5 max-w-[220px]">
+                                  {(f.evidence || []).map((url, j) => (
+                                    <div key={j} className="relative group">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Evidence" className="w-14 h-12 object-cover rounded border border-white/20 hover:opacity-80" /></a>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeEvidence(i, j)}
+                                        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] leading-none hidden group-hover:flex items-center justify-center"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <label className="shrink-0 px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] cursor-pointer text-center">
+                                  + Image
+                                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { addEvidence(i, e.target.files?.[0] || null); e.target.value = ""; }} />
+                                </label>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

@@ -5,85 +5,73 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
-interface Finding { clause: string; detail: string; type: "Observation" | "Nonconformity" | "Opportunity"; }
-interface Nonconformity { clause: string; description: string; corrective_action: string; target_date: string; responsible: string; status: string; }
-
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; }
 interface AuditPlan {
-  id: string; schedule_id: string; title: string;
-  branch_name?: string; status: string; overall_result: string;
-  findings: Finding[]; nonconformities: Nonconformity[];
+  id: string;
+  title: string;
+  branch_id: string;
+  branch_name: string;
+  document_number: string | null;
+  created_at: string;
+  date_of_plan: string | null;
+  audit_period: string | null;
+  findings: Finding[];
 }
+
+const SEVERITIES = ["Critical", "High", "Medium", "Low"] as const;
+
+function severities(findings: Finding[]) {
+  const s: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  findings.forEach((f) => { if (s[f.type] !== undefined) s[f.type] += 1; });
+  return s;
+}
+
+function fmtDate(d: string | null) {
+  if (!d) return "";
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return d;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+const sevColor: Record<string, string> = {
+  Critical: "bg-red-500/20 text-red-300 border-red-500/30",
+  High: "bg-orange-500/20 text-orange-200 border-orange-500/30",
+  Medium: "bg-amber-500/20 text-amber-200 border-amber-500/30",
+  Low: "bg-blue-500/20 text-blue-200 border-blue-500/30",
+};
 
 export default function AuditFindings() {
   const supabase = createClient();
   const [plans, setPlans] = useState<AuditPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [savingId, setSavingId] = useState<string | null>(null);
-
-  const [branchFilter, setBranchFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
+  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data: p } = await supabase.from("audit_plans").select("*").order("created_at", { ascending: false });
-    const { data: s } = await supabase.from("audit_schedules").select("*, branches(name)");
-    const schedMap = new Map((s || []).map((r: any) => [r.id, r.branches?.name || ""]));
+    const [{ data: p }, { data: b }] = await Promise.all([
+      supabase.from("internal_audits").select("*").order("created_at", { ascending: false }),
+      supabase.from("branches").select("*"),
+    ]);
+    const branchName = new Map<string, string>((b || []).map((r: any) => [r.id, r.name]));
     setPlans((p || []).map((r: any) => ({
-      id: r.id, schedule_id: r.schedule_id, title: r.title,
-      branch_name: schedMap.get(r.schedule_id) || "",
-      status: r.status || "Draft", overall_result: r.overall_result || "Open",
-      findings: r.findings || [], nonconformities: r.nonconformities || [],
+      id: r.id, title: r.title, branch_id: r.branch_id, branch_name: branchName.get(r.branch_id) || "Unassigned",
+      document_number: r.document_number, created_at: r.created_at, date_of_plan: r.date_of_plan,
+      audit_period: r.audit_period, findings: r.findings || [],
     })));
     setLoading(false);
   }, [supabase]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const branches = Array.from(new Set(plans.map((p) => p.branch_name).filter(Boolean))).sort();
-
-  const allFindings: { plan: AuditPlan; finding: Finding }[] = [];
-  const allNCs: { plan: AuditPlan; nc: Nonconformity }[] = [];
-  plans.forEach((plan) => {
-    const br = branchFilter === "all" || plan.branch_name === branchFilter;
-    if (!br) return;
-    plan.findings.forEach((finding) => {
-      if (typeFilter === "all" || finding.type === typeFilter) allFindings.push({ plan, finding });
-    });
-    plan.nonconformities.forEach((nc) => {
-      if (statusFilter === "all" || nc.status === statusFilter) allNCs.push({ plan, nc });
-    });
+  const branches: { name: string; plans: AuditPlan[] }[] = [];
+  const branchMap = new Map<string, AuditPlan[]>();
+  plans.forEach((p) => {
+    const list = branchMap.get(p.branch_name) || [];
+    list.push(p);
+    branchMap.set(p.branch_name, list);
   });
-
-  const totalFindings = plans.reduce((n, p) => n + (p.findings?.length || 0), 0);
-  const openNCs = plans.reduce((n, p) => n + (p.nonconformities?.filter((nc) => nc.status !== "Closed").length || 0), 0);
-  const closedNCs = plans.reduce((n, p) => n + (p.nonconformities?.filter((nc) => nc.status === "Closed").length || 0), 0);
-
-  async function setNcStatus(plan: AuditPlan, index: number, status: string) {
-    const updated = plan.nonconformities.map((nc, i) => (i === index ? { ...nc, status } : nc));
-    setSavingId(`${plan.id}-${index}`);
-    const { error: err } = await supabase.from("audit_plans").update({ nonconformities: updated }).eq("id", plan.id);
-    setSavingId(null);
-    if (err) return setError(err.message);
-    setPlans((prev) => prev.map((p) => (p.id === plan.id ? { ...p, nonconformities: updated } : p)));
-  }
-
-  const statusBadge = (status: string) =>
-    status === "Closed"
-      ? "bg-green-500/20 text-green-300"
-      : status === "Open"
-      ? "bg-red-500/20 text-red-300"
-      : "bg-amber-500/20 text-amber-300";
-
-  const typeBadge = (type: string) =>
-    type === "Nonconformity"
-      ? "bg-red-500/20 text-red-300"
-      : type === "Opportunity"
-      ? "bg-blue-500/20 text-blue-300"
-      : "bg-amber-500/20 text-amber-300";
-
-  const selectCls = "px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]";
+  branchMap.forEach((list, name) => branches.push({ name, plans: list }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -96,109 +84,115 @@ export default function AuditFindings() {
           </Link>
         </div>
 
-        <h1 className="text-3xl font-bold text-white mb-2">Audit Findings</h1>
-        <p className="text-blue-200/60 mb-8">Track findings, observations and nonconformities across all audit plans</p>
-
-        {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-5 text-center">
-            <div className="text-3xl font-bold text-white">{totalFindings}</div>
-            <div className="text-xs text-blue-200/60 mt-1">Total Findings</div>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-5 text-center">
-            <div className="text-3xl font-bold text-red-300">{openNCs}</div>
-            <div className="text-xs text-blue-200/60 mt-1">Open Nonconformities</div>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-5 text-center">
-            <div className="text-3xl font-bold text-green-300">{closedNCs}</div>
-            <div className="text-xs text-blue-200/60 mt-1">Closed Nonconformities</div>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-3 mb-8">
-          <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className={selectCls}>
-            <option value="all" className="bg-slate-800">All Branches</option>
-            {branches.map((b) => (<option key={b} value={b} className="bg-slate-800">{b}</option>))}
-          </select>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={selectCls}>
-            <option value="all" className="bg-slate-800">All Finding Types</option>
-            <option value="Observation" className="bg-slate-800">Observation</option>
-            <option value="Nonconformity" className="bg-slate-800">Nonconformity</option>
-            <option value="Opportunity" className="bg-slate-800">Opportunity</option>
-          </select>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls}>
-            <option value="all" className="bg-slate-800">All NC Statuses</option>
-            <option value="Open" className="bg-slate-800">Open</option>
-            <option value="Closed" className="bg-slate-800">Closed</option>
-          </select>
-        </div>
+        <h1 className="text-3xl font-bold text-white mb-2">Findings and Evidences</h1>
+        <p className="text-blue-200/60 mb-8">Generated findings per audit, with evidence for each issue</p>
 
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
-        ) : plans.length === 0 ? (
-          <p className="text-blue-200/40 text-center py-16">No audit plans yet. Create a plan to start recording findings.</p>
+        ) : branches.length === 0 ? (
+          <p className="text-blue-200/40 text-center py-16">No audit plans yet. Record an audit to generate findings.</p>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10">
-                <h2 className="text-lg font-semibold text-white">Findings</h2>
-              </div>
-              {allFindings.length === 0 ? (
-                <p className="text-blue-200/40 text-center py-10 text-sm">No findings match.</p>
-              ) : (
-                <div className="divide-y divide-white/5">
-                  {allFindings.map(({ plan, finding }, i) => (
-                    <div key={i} className="px-6 py-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${typeBadge(finding.type)}`}>{finding.type}</span>
-                        <span className="text-xs text-blue-200/50">Clause {finding.clause}</span>
-                      </div>
-                      <p className="text-sm text-white/80 mb-1">{finding.detail}</p>
-                      <p className="text-xs text-blue-200/40">{plan.title}{plan.branch_name ? ` · ${plan.branch_name}` : ""}</p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {branches.map((b) => {
+                const findings = b.plans.reduce<Finding[]>((acc, p) => acc.concat(p.findings), []);
+                const s = severities(findings);
+                return (
+                  <button
+                    key={b.name}
+                    onClick={() => setExpandedBranch(expandedBranch === b.name ? null : b.name)}
+                    className={`text-left bg-white/5 backdrop-blur-sm border rounded-xl p-5 transition-all hover:bg-white/10 ${expandedBranch === b.name ? "border-purple-500/50" : "border-white/10"}`}
+                  >
+                    <h3 className="text-white font-semibold">{b.name}</h3>
+                    <p className="text-xs text-blue-200/40 mt-1">{b.plans.length} audit{b.plans.length !== 1 ? "s" : ""} · {findings.length} finding{findings.length !== 1 ? "s" : ""}</p>
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {SEVERITIES.map((sev) => s[sev] > 0 && (
+                        <span key={sev} className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[sev]}`}>{sev}: {s[sev]}</span>
+                      ))}
+                      {findings.length === 0 && <span className="px-2 py-0.5 text-xs rounded-full bg-white/5 border border-white/10 text-blue-200/50">No findings yet</span>}
                     </div>
-                  ))}
-                </div>
-              )}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10">
-                <h2 className="text-lg font-semibold text-white">Nonconformities & Corrective Actions</h2>
-              </div>
-              {allNCs.length === 0 ? (
-                <p className="text-blue-200/40 text-center py-10 text-sm">No nonconformities match.</p>
-              ) : (
-                <div className="divide-y divide-white/5">
-                  {allNCs.map(({ plan, nc }, i) => (
-                    <div key={i} className="px-6 py-4">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-red-300 font-medium">Clause {nc.clause}</span>
-                          <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${statusBadge(nc.status)}`}>{nc.status}</span>
+            {expandedBranch && (() => {
+              const group = branches.find((b) => b.name === expandedBranch);
+              if (!group) return null;
+              return (
+                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                  <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-white">{group.name}</h2>
+                    <button onClick={() => setExpandedBranch(null)} className="text-xs text-blue-300 hover:text-white">Collapse</button>
+                  </div>
+                  <div className="divide-y divide-white/5">
+                    {group.plans.length === 0 && <p className="text-blue-200/40 px-6 py-8 text-sm">No audits in this branch.</p>}
+                    {group.plans.map((plan) => {
+                      const s = severities(plan.findings);
+                      return (
+                        <div key={plan.id}>
+                          <button
+                            onClick={() => setExpandedPlan(expandedPlan === plan.id ? null : plan.id)}
+                            className="w-full px-6 py-4 flex flex-wrap items-center justify-between gap-3 hover:bg-white/5 transition-colors text-left"
+                          >
+                            <div className="min-w-0">
+                              <h3 className="text-white font-medium">{plan.title}</h3>
+                              <p className="text-xs text-blue-200/40 mt-1">
+                                {[plan.document_number, fmtDate(plan.date_of_plan), plan.audit_period].filter(Boolean).join(" · ") || "No date"}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-blue-200/50">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
+                              <svg className={`w-4 h-4 text-blue-400 transition-transform ${expandedPlan === plan.id ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                            </div>
+                          </button>
+
+                          {expandedPlan === plan.id && (
+                            <div className="px-6 pb-6">
+                              <div className="flex flex-wrap gap-2 mb-4">
+                                {SEVERITIES.map((sev) => (
+                                  <span key={sev} className={`px-3 py-1 text-xs rounded-full border ${sevColor[sev]}`}>{sev}: {s[sev]}</span>
+                                ))}
+                              </div>
+
+                              {plan.findings.length === 0 ? (
+                                <p className="text-sm text-blue-200/40">No findings generated for this audit yet. Go to Audit Records → Internal to generate them from your notes.</p>
+                              ) : (
+                                <div className="space-y-3">
+                                  {plan.findings.map((f, i) => (
+                                    <div key={i} className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
+                                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                                        <span className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[f.type] || sevColor.Medium}`}>{f.type}</span>
+                                        <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
+                                        {f.recommendation && <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(i + 1).padStart(2, "0")}</span>}
+                                      </div>
+                                      <p className="text-sm text-white/80">{f.detail}</p>
+                                      {f.recommendation && (
+                                        <p className="text-xs text-blue-200/60 mt-2"><span className="text-blue-300">Recommendation:</span> {f.recommendation}</p>
+                                      )}
+                                      {f.evidence && f.evidence.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mt-3">
+                                          {f.evidence.map((url, j) => (
+                                            <a key={j} href={url} target="_blank" rel="noopener noreferrer" className="block">
+                                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                                              <img src={url} alt={`Evidence ${j + 1}`} className="w-24 h-20 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" />
+                                            </a>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <select
-                          value={nc.status}
-                          disabled={savingId === `${plan.id}-${i}`}
-                          onChange={(e) => setNcStatus(plan, i, e.target.value)}
-                          className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
-                        >
-                          <option value="Open" className="bg-slate-800">Open</option>
-                          <option value="Closed" className="bg-slate-800">Closed</option>
-                        </select>
-                      </div>
-                      <p className="text-sm text-white/80 mb-1">{nc.description}</p>
-                      {nc.corrective_action && <p className="text-xs text-blue-200/50 mb-1">Action: {nc.corrective_action}</p>}
-                      <div className="flex flex-wrap gap-3 text-xs text-blue-200/40 mb-2">
-                        {nc.target_date && <span>Target: {nc.target_date}</span>}
-                        {nc.responsible && <span>Responsible: {nc.responsible}</span>}
-                      </div>
-                      <p className="text-xs text-blue-200/40">{plan.title}{plan.branch_name ? ` · ${plan.branch_name}` : ""}</p>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })()}
           </div>
         )}
       </main>
