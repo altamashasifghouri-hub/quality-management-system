@@ -287,17 +287,22 @@ export default function CapaPage() {
       sectionTitle("8. Approval");
       const authorizeName = settings.ceo_name || settings.hr_name || plan.prepared_by || "Authorized Signatory";
       const sigUrl = plan.signature || SIG_DEFAULT;
-      if (y + 40 > 790) { doc.addPage(); y = margin; }
+      if (y + 48 > 790) { doc.addPage(); y = margin; }
+      let capaLogo = "";
+      try { capaLogo = await loadImageData(LOGO); } catch { /* logo unavailable */ }
+      if (capaLogo) {
+        doc.addImage(capaLogo, "PNG", margin, y + 6, 34, 24);
+      }
       doc.setFontSize(10); doc.setTextColor(30, 41, 59);
-      doc.text(`Authorized by: ${authorizeName}`, margin, y + 14);
+      doc.text(`Authorized by: ${authorizeName}`, margin, y + 36);
       try {
         const dataUrl = await loadImageData(sigUrl);
         doc.addImage(dataUrl, "PNG", margin + 90, y, 45, 22);
       } catch { /* signature image unavailable */ }
       doc.setDrawColor(30, 41, 59);
-      doc.line(margin, y + 24, margin + 55, y + 24);
+      doc.line(margin, y + 41, margin + 55, y + 41);
       doc.setFontSize(8); doc.setTextColor(100, 116, 139);
-      doc.text("Signature", margin, y + 28);
+      doc.text("Signature", margin, y + 45);
 
       const blob = doc.output("blob");
       const formData = new FormData();
