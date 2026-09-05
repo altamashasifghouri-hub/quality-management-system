@@ -23,6 +23,10 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const [hrName, setHrName] = useState("");
+  const [ceoName, setCeoName] = useState("");
+  const [companySaving, setCompanySaving] = useState(false);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const u = data.user;
@@ -35,8 +39,30 @@ export default function Settings() {
         setEmail(u.email ?? "");
       }
     });
+    supabase.from("settings").select("*").eq("id", 1).maybeSingle().then(({ data }) => {
+      if (data) {
+        setHrName(data.hr_name || "");
+        setCeoName(data.ceo_name || "");
+      } else {
+        supabase.from("settings").insert({ id: 1, hr_name: "", ceo_name: "" }).then(() => {});
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleSaveCompany(e: React.FormEvent) {
+    e.preventDefault();
+    setCompanySaving(true);
+    setError("");
+    setMessage("");
+    const { error } = await supabase
+      .from("settings")
+      .update({ hr_name: hrName.trim(), ceo_name: ceoName.trim(), updated_at: new Date().toISOString() })
+      .eq("id", 1);
+    setCompanySaving(false);
+    if (error) return setError(error.message);
+    setMessage("Company settings saved.");
+  }
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -123,6 +149,40 @@ export default function Settings() {
 
         {sessionUser && (
           <div className="space-y-6">
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl">
+              <h2 className="text-lg font-semibold text-white mb-1">Company Settings</h2>
+              <p className="text-xs text-blue-200/60 mb-4">Names shown on audit report distribution (shared across the system)</p>
+              <form onSubmit={handleSaveCompany} className="space-y-4">
+                <div>
+                  <label className="block text-sm text-blue-200/60 mb-1">HR Name</label>
+                  <input
+                    type="text"
+                    value={hrName}
+                    onChange={(e) => setHrName(e.target.value)}
+                    placeholder="HR Manager name"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-blue-200/60 mb-1">CEO Name</label>
+                  <input
+                    type="text"
+                    value={ceoName}
+                    onChange={(e) => setCeoName(e.target.value)}
+                    placeholder="CEO name"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={companySaving}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-50"
+                >
+                  {companySaving ? "Saving..." : "Save Company Settings"}
+                </button>
+              </form>
+            </div>
+
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl">
               <h2 className="text-lg font-semibold text-white mb-4">Profile Name</h2>
               <form onSubmit={handleSaveProfile} className="space-y-4">

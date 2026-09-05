@@ -9,6 +9,8 @@ interface Branch {
   id: string;
   name: string;
   created_at: string;
+  branch_manager?: string | null;
+  locations?: string[] | null;
   departments: Department[];
 }
 
@@ -27,6 +29,8 @@ export default function BranchesPage() {
   const [newBranchName, setNewBranchName] = useState("");
   const [editBranchId, setEditBranchId] = useState<string | null>(null);
   const [editBranchName, setEditBranchName] = useState("");
+  const [editBranchManager, setEditBranchManager] = useState("");
+  const [editBranchLocations, setEditBranchLocations] = useState("");
 
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
   const [newDeptName, setNewDeptName] = useState("");
@@ -94,11 +98,18 @@ export default function BranchesPage() {
     if (!editBranchName.trim()) return;
     const { error } = await supabase
       .from("branches")
-      .update({ name: editBranchName.trim(), updated_at: new Date().toISOString() })
+      .update({
+        name: editBranchName.trim(),
+        branch_manager: editBranchManager.trim() || null,
+        locations: editBranchLocations.split(",").map((s) => s.trim()).filter(Boolean),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id);
     if (error) return showErr(error.message);
     setEditBranchId(null);
     setEditBranchName("");
+    setEditBranchManager("");
+    setEditBranchLocations("");
     showMsg("Branch updated.");
     fetchBranches();
   }
@@ -215,29 +226,56 @@ export default function BranchesPage() {
                       </svg>
                     </button>
                     {editBranchId === branch.id ? (
-                      <div className="flex items-center gap-2 flex-1">
+                      <div className="flex-1 space-y-2">
                         <input
                           type="text"
                           value={editBranchName}
                           onChange={(e) => setEditBranchName(e.target.value)}
                           onKeyDown={(e) => e.key === "Enter" && handleUpdateBranch(branch.id)}
                           autoFocus
-                          className="flex-1 px-3 py-2 bg-white/10 border border-blue-500 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Branch name"
+                          className="w-full px-3 py-2 bg-white/10 border border-blue-500 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <button onClick={() => handleUpdateBranch(branch.id)} className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm rounded-lg transition-colors">Save</button>
-                        <button onClick={() => { setEditBranchId(null); setEditBranchName(""); }} className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition-colors">Cancel</button>
+                        <input
+                          type="text"
+                          value={editBranchManager}
+                          onChange={(e) => setEditBranchManager(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleUpdateBranch(branch.id)}
+                          placeholder="Branch Manager name"
+                          className="w-full px-3 py-2 bg-white/10 border border-blue-500 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <input
+                          type="text"
+                          value={editBranchLocations}
+                          onChange={(e) => setEditBranchLocations(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleUpdateBranch(branch.id)}
+                          placeholder="Locations (comma separated) — shown as tags"
+                          className="w-full px-3 py-2 bg-white/10 border border-blue-500 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleUpdateBranch(branch.id)} className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm rounded-lg transition-colors">Save</button>
+                          <button onClick={() => { setEditBranchId(null); setEditBranchName(""); setEditBranchManager(""); setEditBranchLocations(""); }} className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition-colors">Cancel</button>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex-1">
                         <h3 className="text-white font-semibold">{branch.name}</h3>
-                        <p className="text-xs text-blue-200/40">{uniqueDepts.length} department{uniqueDepts.length !== 1 ? "s" : ""}</p>
+                        {branch.branch_manager && <p className="text-xs text-blue-300/80">Manager: {branch.branch_manager}</p>}
+                        {branch.locations && branch.locations.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {branch.locations.map((loc) => (
+                              <span key={loc} className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{loc}</span>
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-xs text-blue-200/40 mt-1">{uniqueDepts.length} department{uniqueDepts.length !== 1 ? "s" : ""}</p>
                       </div>
                     )}
                   </div>
                   {editBranchId !== branch.id && (
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => { setEditBranchId(branch.id); setEditBranchName(branch.name); }}
+                        onClick={() => { setEditBranchId(branch.id); setEditBranchName(branch.name); setEditBranchManager(branch.branch_manager || ""); setEditBranchLocations((branch.locations || []).join(", ")); }}
                         className="px-3 py-2 text-xs text-blue-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all duration-200"
                       >
                         Edit
