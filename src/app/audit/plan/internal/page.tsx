@@ -29,8 +29,6 @@ interface InternalAudit {
   audit_period: string | null;
   plan_version: string | null;
   prepared_by: string | null;
-  reviewed_by: string | null;
-  approved_by: string | null;
   date_of_plan: string | null;
   purpose: string | null;
   period_covered: string | null;
@@ -48,8 +46,6 @@ interface PlanForm {
   audit_period: string;
   plan_version: string;
   prepared_by: string;
-  reviewed_by: string;
-  approved_by: string;
   date_of_plan: string;
   purpose: string;
   period_covered: string;
@@ -84,15 +80,7 @@ const INDEPENDENCE_TEXT =
   "The Internal Audit team confirms independence from the operations under review. All information obtained during the audit will be treated as confidential and used solely for audit purposes.";
 
 const SIG_DEFAULT = "/signature.png";
-
-const severityBadge = (s: string) =>
-  s === "Critical"
-    ? "bg-red-600/30 text-red-300"
-    : s === "High"
-    ? "bg-orange-500/20 text-orange-300"
-    : s === "Medium"
-    ? "bg-amber-500/20 text-amber-300"
-    : "bg-blue-500/20 text-blue-300";
+const LOGO = "/logo.jpg";
 
 const statusBadge = (status: string) =>
   status === "Completed"
@@ -107,7 +95,7 @@ function todayStr() {
 
 const emptyForm = (): PlanForm => ({
   title: "", branch_id: "", schedule_id: "", audit_period: "", plan_version: "",
-  prepared_by: "", reviewed_by: "", approved_by: "", date_of_plan: todayStr(),
+  prepared_by: "", date_of_plan: todayStr(),
   purpose: "", period_covered: "", locations_covered: "", exclusions: "",
   team: "", departments: [], approach: [...APPROACH_ITEMS], program: {}, signature: "",
 });
@@ -127,10 +115,6 @@ export default function InternalAuditPlan() {
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
 
   const [viewingPlan, setViewingPlan] = useState<string | null>(null);
-  const [findingDept, setFindingDept] = useState("");
-  const [findingType, setFindingType] = useState<Severity>("Medium");
-  const [findingDetail, setFindingDetail] = useState("");
-  const [showFindingForm, setShowFindingForm] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 3000); }
@@ -161,7 +145,7 @@ export default function InternalAuditPlan() {
       schedule_id: p.schedule_id, departments: p.departments || [], audit_team: p.audit_team,
       findings: p.findings || [], status: p.status || "Draft", created_at: p.created_at,
       audit_period: p.audit_period, plan_version: p.plan_version, prepared_by: p.prepared_by,
-      reviewed_by: p.reviewed_by, approved_by: p.approved_by, date_of_plan: p.date_of_plan,
+      date_of_plan: p.date_of_plan,
       purpose: p.purpose, period_covered: p.period_covered, locations_covered: p.locations_covered,
       exclusions: p.exclusions, approach: p.approach || [], program: p.program || [],
       signature: p.signature,
@@ -228,8 +212,7 @@ export default function InternalAuditPlan() {
       title: form.title.trim(), branch_id: form.branch_id, schedule_id: form.schedule_id,
       departments: form.departments, audit_team: form.team.trim() || null,
       audit_period: form.audit_period.trim() || null, plan_version: form.plan_version.trim() || null,
-      prepared_by: form.prepared_by.trim() || null, reviewed_by: form.reviewed_by.trim() || null,
-      approved_by: form.approved_by.trim() || null, date_of_plan: form.date_of_plan || null,
+      prepared_by: form.prepared_by.trim() || null, date_of_plan: form.date_of_plan || null,
       purpose: form.purpose.trim() || null, period_covered: form.period_covered.trim() || null,
       locations_covered: form.locations_covered.trim() || null, exclusions: form.exclusions.trim() || null,
       approach: form.approach, program, signature: form.signature || null,
@@ -266,8 +249,7 @@ export default function InternalAuditPlan() {
     setForm({
       title: plan.title, branch_id: plan.branch_id, schedule_id: plan.schedule_id || "",
       audit_period: plan.audit_period || "", plan_version: plan.plan_version || "",
-      prepared_by: plan.prepared_by || "", reviewed_by: plan.reviewed_by || "",
-      approved_by: plan.approved_by || "", date_of_plan: plan.date_of_plan || todayStr(),
+      prepared_by: plan.prepared_by || "", date_of_plan: plan.date_of_plan || todayStr(),
       purpose: plan.purpose || "", period_covered: plan.period_covered || "",
       locations_covered: plan.locations_covered || "", exclusions: plan.exclusions || "",
       team: plan.audit_team || "", departments: plan.departments,
@@ -275,25 +257,6 @@ export default function InternalAuditPlan() {
       program, signature: plan.signature || "",
     });
     setEditingPlan(plan.id); setViewingPlan(null); setShowForm(true);
-  }
-
-  async function addFinding(plan: InternalAudit) {
-    if (!findingDept || !findingDetail.trim()) return showErr("Select a department and enter finding details.");
-    const updated = [...plan.findings, { department: findingDept, type: findingType, detail: findingDetail.trim() }];
-    setSaving(true);
-    const { error: err } = await supabase.from("internal_audits").update({ findings: updated, updated_at: new Date().toISOString() }).eq("id", plan.id);
-    setSaving(false);
-    if (err) return showErr(err.message);
-    setFindingDept(""); setFindingDetail(""); setFindingType("Medium"); setShowFindingForm(false);
-    showMsg("Finding added.");
-    fetchData();
-  }
-
-  async function deleteFinding(plan: InternalAudit, index: number) {
-    const updated = plan.findings.filter((_, i) => i !== index);
-    const { error: err } = await supabase.from("internal_audits").update({ findings: updated, updated_at: new Date().toISOString() }).eq("id", plan.id);
-    if (err) return showErr(err.message);
-    fetchData();
   }
 
   const viewPlan = viewingPlan ? plans.find((p) => p.id === viewingPlan) : null;
@@ -328,6 +291,20 @@ export default function InternalAuditPlan() {
       const margin = 20;
       const maxWidth = pageWidth - margin * 2;
       let y = margin;
+
+      try {
+        const logoUrl = await loadImageData(LOGO);
+        const logoW = 40;
+        const logoH = 28;
+        doc.addImage(logoUrl, "PNG", margin, y, logoW, logoH);
+      } catch { /* logo unavailable */ }
+
+      y += 34;
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text("INTERNAL AUDIT PLAN", pageWidth / 2, y, { align: "center" });
+      y += 10;
+
       const line = (t: string, size = 10, color: [number, number, number] = [30, 41, 59], gap = 5) => {
         doc.setFontSize(size);
         doc.setTextColor(color[0], color[1], color[2]);
@@ -346,11 +323,6 @@ export default function InternalAuditPlan() {
         y += 7;
       };
 
-      doc.setFontSize(16);
-      doc.setTextColor(15, 23, 42);
-      doc.text("INTERNAL AUDIT PLAN", pageWidth / 2, y, { align: "center" });
-      y += 10;
-
       autoTable(doc, {
         startY: y,
         theme: "grid",
@@ -361,8 +333,6 @@ export default function InternalAuditPlan() {
           ["Audit Period", plan.audit_period || "—"],
           ["Plan Version", plan.plan_version || "—"],
           ["Prepared by", plan.prepared_by || "—"],
-          ["Reviewed by", plan.reviewed_by || "—"],
-          ["Approved by", plan.approved_by || "—"],
           ["Date of Plan", plan.date_of_plan || "—"],
         ],
         styles: { fontSize: 9, cellPadding: 2.5 },
@@ -526,14 +496,6 @@ export default function InternalAuditPlan() {
                 <input value={form.prepared_by} onChange={(e) => setF({ prepared_by: e.target.value })} placeholder="Name" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Reviewed by</label>
-                <input value={form.reviewed_by} onChange={(e) => setF({ reviewed_by: e.target.value })} placeholder="Name" className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Approved by</label>
-                <input value={form.approved_by} onChange={(e) => setF({ approved_by: e.target.value })} placeholder="Name" className={inputCls} />
-              </div>
-              <div>
                 <label className={labelCls}>Date of Plan *</label>
                 <input type="date" value={form.date_of_plan} onChange={(e) => setF({ date_of_plan: e.target.value })} className={inputCls} />
               </div>
@@ -691,7 +653,7 @@ export default function InternalAuditPlan() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-blue-200/50">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
-                    <button onClick={() => { setViewingPlan(plan.id); setEditingPlan(null); setShowFindingForm(false); }} className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">Open</button>
+                    <button onClick={() => { setViewingPlan(plan.id); setEditingPlan(null); }} className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">Open</button>
                   </div>
                 </div>
               </div>
@@ -714,7 +676,11 @@ export default function InternalAuditPlan() {
             </div>
 
             <div className="bg-white text-slate-900 rounded-2xl p-10 shadow-2xl">
-              <h1 className="text-2xl font-bold text-center border-b-2 border-blue-600 pb-4 mb-6">INTERNAL AUDIT PLAN</h1>
+              <div className="flex items-center justify-between border-b-2 border-blue-600 pb-4 mb-6">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={LOGO} alt="Brand logo" className="h-14" />
+                <h1 className="text-2xl font-bold text-center">INTERNAL AUDIT PLAN</h1>
+              </div>
 
               <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm mb-6">
                 <div><span className="text-slate-500">Branch Name:</span> <span className="font-medium">{viewPlan.branch_name}</span></div>
@@ -722,8 +688,6 @@ export default function InternalAuditPlan() {
                 <div><span className="text-slate-500">Audit Period:</span> <span className="font-medium">{viewPlan.audit_period || "—"}</span></div>
                 <div><span className="text-slate-500">Plan Version:</span> <span className="font-medium">{viewPlan.plan_version || "—"}</span></div>
                 <div><span className="text-slate-500">Prepared by:</span> <span className="font-medium">{viewPlan.prepared_by || "—"}</span></div>
-                <div><span className="text-slate-500">Reviewed by:</span> <span className="font-medium">{viewPlan.reviewed_by || "—"}</span></div>
-                <div><span className="text-slate-500">Approved by:</span> <span className="font-medium">{viewPlan.approved_by || "—"}</span></div>
                 <div><span className="text-slate-500">Date of Plan:</span> <span className="font-medium">{viewPlan.date_of_plan || "—"}</span></div>
               </div>
 
@@ -823,51 +787,6 @@ export default function InternalAuditPlan() {
                 <div>
                   <p className="text-sm font-medium">Date: {viewPlan.date_of_plan || "_____________"}</p>
                 </div>
-              </div>
-            </div>
-
-            <div className="mt-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">Findings Log</h3>
-                <button onClick={() => setShowFindingForm((v) => !v)} className="px-3 py-1.5 text-xs rounded-lg bg-purple-600 hover:bg-purple-500 text-white">{showFindingForm ? "Cancel" : "+ Add Finding"}</button>
-              </div>
-              <div className="p-6">
-                {showFindingForm && (
-                  <div className="mb-4 p-4 bg-white/5 border border-white/10 rounded-xl space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <select value={findingDept} onChange={(e) => setFindingDept(e.target.value)} className={selectCls}>
-                        <option value="">Department</option>
-                        {viewPlan.departments.map((d) => (<option key={d} value={d} className="bg-slate-800">{d}</option>))}
-                      </select>
-                      <select value={findingType} onChange={(e) => setFindingType(e.target.value as Severity)} className={selectCls}>
-                        <option value="Critical" className="bg-slate-800">Critical</option>
-                        <option value="High" className="bg-slate-800">High</option>
-                        <option value="Medium" className="bg-slate-800">Medium</option>
-                        <option value="Low" className="bg-slate-800">Low</option>
-                      </select>
-                    </div>
-                    <textarea value={findingDetail} onChange={(e) => setFindingDetail(e.target.value)} placeholder="Finding details..." rows={2} className={inputCls} />
-                    <button onClick={() => addFinding(viewPlan)} disabled={saving} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium disabled:opacity-50">{saving ? "Adding..." : "Add Finding"}</button>
-                  </div>
-                )}
-                {viewPlan.findings.length === 0 ? (
-                  <p className="text-blue-200/40 text-center py-6 text-sm">No findings yet. Add the first finding for this internal audit.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {viewPlan.findings.map((f, i) => (
-                      <div key={i} className="p-3 bg-white/5 rounded-lg flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3">
-                          <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${severityBadge(f.type)}`}>{f.type}</span>
-                          <div>
-                            <span className="text-xs text-purple-300">{f.department}</span>
-                            <p className="text-sm text-white/80 mt-0.5">{f.detail}</p>
-                          </div>
-                        </div>
-                        <button onClick={() => deleteFinding(viewPlan, i)} className="text-xs text-red-400/60 hover:text-red-300">Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </div>
