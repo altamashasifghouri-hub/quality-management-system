@@ -237,8 +237,13 @@ export default function CapaPage() {
 
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 20;
       const maxWidth = pageWidth - margin * 2;
+      const maxY = pageHeight - 12;
+      const ensure = (needed: number) => {
+        if (y + needed > maxY) { doc.addPage(); y = margin; }
+      };
       let y = margin;
 
       const logoData = await assetToDataUrl(LOGO);
@@ -278,13 +283,13 @@ export default function CapaPage() {
         doc.setTextColor(color[0], color[1], color[2]);
         const wrapped = doc.splitTextToSize(t, maxWidth);
         const above = wrapped.length * size * 0.45 + gap;
-        if (y + above > 790) { doc.addPage(); y = margin; }
+        ensure(above);
         doc.text(wrapped, margin, y);
         y += above;
         return y;
       };
       const sectionTitle = (t: string) => {
-        if (y > 700) { doc.addPage(); y = margin; }
+        ensure(20);
         doc.setFontSize(12); doc.setTextColor(29, 78, 216);
         doc.text(t, margin, y);
         y += 7;
@@ -295,7 +300,7 @@ export default function CapaPage() {
       const bullet = (t: string) => {
         doc.setFontSize(10); doc.setTextColor(30, 41, 59);
         const wrapped = doc.splitTextToSize(`• ${t}`, maxWidth);
-        if (y + wrapped.length * 4.5 + 4 > 790) { doc.addPage(); y = margin; }
+        ensure(wrapped.length * 4.5 + 4);
         doc.text(wrapped, margin, y);
         y += wrapped.length * 4.5 + 2;
       };
@@ -324,39 +329,42 @@ export default function CapaPage() {
 
       if (finding.evidence && finding.evidence.length > 0) {
         sectionTitle("7. Supporting Evidence");
-        let row = 0;
+        let col = 0;
+        let rowY = y;
         for (const url of finding.evidence) {
           try {
             const dataUrl = await loadImageData(url);
             const w = 70;
             const h = 55;
-            if (y + h + 10 > 790) { doc.addPage(); y = margin; }
-            const x = margin + (row % 2) * (maxWidth / 2);
-            if (y + h > 790) { doc.addPage(); y = margin; row = 0; }
-            doc.addImage(dataUrl, "PNG", x, y, w, h);
-            row += 1;
-            if (row % 2 === 0) y += h + 8;
+            if (col % 2 === 0) {
+              ensure(h + 8);
+              rowY = y;
+            }
+            if (col !== 0 && col % 2 === 0) rowY = y;
+            const x = margin + (col % 2) * (maxWidth / 2);
+            doc.addImage(dataUrl, "PNG", x, rowY, w, h);
+            col += 1;
+            if (col % 2 === 0) y = rowY + h + 8;
           } catch { /* image unavailable */ }
         }
-        if (row % 2 !== 0) y += 55 + 8;
-        if (y > 700) { doc.addPage(); y = margin; }
+        if (col % 2 !== 0) y = rowY + 55 + 8;
+        y += 6;
       }
 
-      y += 6;
       sectionTitle("8. Approval");
       const authorizeName = settings.ceo_name || settings.hr_name || plan.prepared_by || "Authorized Signatory";
       const sigUrl = plan.signature || SIG_DEFAULT;
-      if (y + 48 > 790) { doc.addPage(); y = margin; }
+      ensure(52);
       const capaLogo = await assetToDataUrl(LOGO);
-      embedImage(doc, capaLogo, margin, y + 4, 34, 24);
+      embedImage(doc, capaLogo, pageWidth - margin - 40, y + 6, 40, 28);
       doc.setFontSize(10); doc.setTextColor(30, 41, 59);
-      doc.text(`Authorized by: ${authorizeName}`, margin, y + 36);
+      doc.text(`Authorized by: ${authorizeName}`, margin, y + 14);
       const sigData = await assetToDataUrl(sigUrl);
-      embedImage(doc, sigData, margin + 90, y, 45, 22);
+      embedImage(doc, sigData, margin, y + 20, 52, 20);
       doc.setDrawColor(30, 41, 59);
-      doc.line(margin, y + 41, margin + 55, y + 41);
+      doc.line(margin, y + 44, margin + 55, y + 44);
       doc.setFontSize(8); doc.setTextColor(100, 116, 139);
-      doc.text("Signature", margin, y + 45);
+      doc.text("Signature", margin + 7, y + 48);
 
       const blob = doc.output("blob");
       const formData = new FormData();
