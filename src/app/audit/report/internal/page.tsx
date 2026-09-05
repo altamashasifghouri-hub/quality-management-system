@@ -296,9 +296,46 @@ export default function InternalAuditReport() {
     }
     setSaving(false);
     setShowForm(false); setEditingReportId(null); setForm(emptyForm());
-    showMsg(editingReportId ? "Report updated." : "Report created.");
-    fetchData();
-    setTimeout(() => { if (savedId) setViewingReportId(savedId); }, 300);
+
+    if (savedId) {
+      const alreadySaved = reports.find((r) => r.id === savedId);
+      if (!alreadySaved?.pdf_url) {
+        fetchData();
+        setTimeout(() => { generatePdf(formAsReport(savedId)).then(() => { if (savedId) setViewingReportId(savedId); }); }, 500);
+      } else {
+        showMsg(editingReportId ? "Report updated." : "Report created.");
+        fetchData();
+        setTimeout(() => setViewingReportId(savedId), 300);
+      }
+    }
+  }
+
+  function formAsReport(id: string): AuditReport {
+    return {
+      id,
+      audit_id: form.audit_id,
+      title: form.title.trim(),
+      document_number: form.document_number.trim() || null,
+      branch_id: form.branch_id,
+      report_date: form.report_date,
+      fieldwork_dates: form.fieldwork_dates.trim() || null,
+      report_period: form.report_period.trim() || null,
+      locations_covered: form.locations_covered.trim() || null,
+      prepared_by: form.prepared_by.trim() || null,
+      background: form.background.trim() || null,
+      objectives: form.objectives.trim() || null,
+      positive_observations: form.positive_observations.trim() || null,
+      overall_opinion: form.overall_opinion,
+      key_highlights: form.key_highlights.trim() || null,
+      overall_conclusion: form.overall_conclusion.trim() || null,
+      acknowledgement: form.acknowledgement.trim() || null,
+      findings: form.findings,
+      summary: computeSummary(form.findings),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      pdf_url: null,
+      pdf_public_id: null,
+    };
   }
 
   async function handleDeleteReport(id: string) {
@@ -327,6 +364,10 @@ export default function InternalAuditReport() {
   }
 
   async function generatePdf(report: AuditReport) {
+    if (report.pdf_url) {
+      showMsg("PDF already saved to Google Drive — open it from the preview.");
+      return;
+    }
     setDownloadingPdf(true);
     setError("");
     try {
@@ -810,11 +851,13 @@ export default function InternalAuditReport() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">Internal Audit Report</h2>
               <div className="flex gap-2">
-                <button onClick={() => generatePdf(viewingReport)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                  {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : "Save to Google Drive"}
-                </button>
+                {!viewingReport.pdf_url && (
+                  <button onClick={() => generatePdf(viewingReport)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                    {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : "Generate & Save PDF"}
+                  </button>
+                )}
                 {viewingReport.pdf_url && (
-                  <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
+                  <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors">
                     View Saved PDF
                   </a>
                 )}

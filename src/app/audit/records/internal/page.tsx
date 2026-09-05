@@ -106,9 +106,24 @@ export default function InternalRecords() {
       if (session) {
         await supabase.from("audit_sessions").update({ status: "closed", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", session.id);
       }
-      const { data, error: err } = await supabase.from("audit_sessions").insert({ plan_id: selectedPlan.id, notepad: "", status: "active" }).select("id").single();
-      if (err) return showErr(err.message);
-      setSession({ id: data.id, plan_id: selectedPlan.id, notepad: "", status: "active" });
+      const { data: existing } = await supabase
+        .from("audit_sessions").select("id").eq("plan_id", selectedPlan.id)
+        .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      let sessId: string;
+      if (existing) {
+        sessId = existing.id as string;
+        const { error: err2 } = await supabase
+          .from("audit_sessions")
+          .update({ status: "active", notepad: "", closed_at: null, started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", sessId);
+        if (err2) return showErr(err2.message);
+      } else {
+        const { data, error: err2 } = await supabase
+          .from("audit_sessions").insert({ plan_id: selectedPlan.id, notepad: "", status: "active" }).select("id").single();
+        if (err2) return showErr(err2.message);
+        sessId = data?.id as string;
+      }
+      setSession({ id: sessId, plan_id: selectedPlan.id, notepad: "", status: "active" });
       setNotepad("");
       setSelectedPlanId("");
       showMsg("Audit started. Everything you write here is auto-saved — close it only when you are done.");
