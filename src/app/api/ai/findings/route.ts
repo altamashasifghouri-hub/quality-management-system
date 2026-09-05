@@ -11,7 +11,20 @@ function normalizeSeverity(v: string) {
   return "Low";
 }
 
-function parseFindings(text: string): { department: string; type: string; detail: string; recommendation?: string }[] | null {
+function resolveClause(v: string, clauses: string[]): string {
+  const t = String(v || "").trim();
+  if (!t) return "";
+  const canon = clauses.find((c) => c.toLowerCase() === t.toLowerCase());
+  if (canon) return canon;
+  const num = (t.match(/^\s*(\d+(?:\.\d+)*)/) || [])[1];
+  if (num) {
+    const byNum = clauses.find((c) => c.split(" ")[0] === num || c.startsWith(num + " "));
+    if (byNum) return byNum;
+  }
+  return "";
+}
+
+function parseFindings(text: string, clauses: string[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string }[] | null {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = fence ? fence[1] : text;
   const start = raw.indexOf("[");
@@ -20,25 +33,35 @@ function parseFindings(text: string): { department: string; type: string; detail
   try {
     const arr = JSON.parse(raw.slice(start, end + 1));
     if (!Array.isArray(arr) || arr.length === 0) return null;
-    return arr.map((f: any) => ({
-      department: String(f.department || "").trim() || "General",
-      type: normalizeSeverity(f.type || f.severity || f.risk || "Low"),
-      detail: String(f.detail || f.finding || f.description || "").trim(),
-      recommendation: String(f.recommendation || f.recommended_action || "").trim() || undefined,
-    })).filter((f) => f.detail.length > 3);
+    return arr.map((f: any) => {
+      const clause = resolveClause(String(f.clause || ""), clauses);
+      return {
+        department: String(f.department || "").trim() || "General",
+        ...(clause ? { clause } : {}),
+        type: normalizeSeverity(f.type || f.severity || f.risk || "Low"),
+        detail: String(f.detail || f.finding || f.description || "").trim(),
+        recommendation: String(f.recommendation || f.recommended_action || "").trim() || undefined,
+      };
+    }).filter((f) => f.detail.length > 3);
   } catch {
     return null;
   }
 }
 
-function heuristicFindings(notes: string, departments: string[]): { department: string; type: string; detail: string; recommendation?: string }[] {
+function heuristicFindings(notes: string, departments: string[], clauses: string[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string }[] {
   const lines = notes.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-  const results: { department: string; type: string; detail: string; recommendation?: string }[] = [];
+  const results: { department: string; clause?: string; type: string; detail: string; recommendation?: string }[] = [];
   const lowerDeps = departments.map((d) => d.toLowerCase());
   lines.forEach((line) => {
     const matched = departments.filter((d, i) => line.toLowerCase().includes(lowerDeps[i]));
     const target = matched.length ? matched[0] : departments.length === 1 ? departments[0] : "General";
-    results.push({ department: target, type: "Medium", detail: line });
+    const clause = resolveClause(line, clauses);
+    results.push({
+      department: target,
+      ...(clause ? { clause } : {}),
+      type: "Medium",
+      detail: line.replace(/^\s*\d+(?:\.\d+)*[\s:.-]*/, "").trim() || line,
+    });
   });
   return results;
 }
@@ -46,29 +69,45 @@ function heuristicFindings(notes: string, departments: string[]): { department: 
 export async function POST(req: Request) {
   let notes = "";
   let departments: string[] = [];
+  let clauses: string[] = [];
   let branchName = "";
   let planTitle = "";
   try {
     const body = await req.json();
     notes = String(body.notes || "").trim();
     departments = Array.isArray(body.departments) ? body.departments.map(String).filter(Boolean) : [];
+    clauses = Array.isArray(body.clauses) ? body.clauses.map(String).filter(Boolean) : [];
     branchName = String(body.branchName || "");
     planTitle = String(body.planTitle || "");
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
   if (!notes) return NextResponse.json({ error: "Notepad is empty." }, { status: 400 });
-  if (departments.length === 0) return NextResponse.json({ error: "No departments selected on the audit plan." }, { status: 400 });
+  if (departments.length === 0 && clauses.length === 0) {
+    if (!departments.length && clauses.length > 0) departments = ["General"];
+    else return NextResponse.json({ error: "No departments selected on the audit plan." }, { status: 400 });
+  }
+  if (departments.length === 0) departments = ["General"];
 
   const apiKey = process.env.GEMINI_API_KEY;
+  const clauseBlock = clauses.length
+    ? [
+        `Assign each finding to exactly one ISO 9001:2015 clause below (return the FULL clause text exactly as written — never abbreviate it). Use the clauses strictly as provided:`,
+        clauses.join("\n"),
+      ].join("\n")
+    : "";
+
   const promptText = [
     `You are an internal auditor. Convert the auditor's raw field notes below into a structured list of audit findings.`,
     `For each finding assign the department (MUST be one of these audited departments: ${departments.join(", ")}),`,
     `a risk type of exactly one of: ${SEVERITIES.join(", ")} (use Critical for life/safety or major money loss, High for serious process failures, Medium for moderate gaps, Low for minor issues/observations),`,
     `a clear factual detail description, and a practical recommendation for each.`,
     `Only use the departments listed above. Do not invent departments.`,
+    clauseBlock,
     `Return ONLY a JSON array with no markdown, no prose, in this shape:`,
-    `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`,
+    clauses.length
+      ? `[{"department":"Department Name","clause":"4.1 Understanding the organization and its context","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`
+      : `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`,
     ``,
     `Hotel/Branch: ${branchName || "Not provided"}`,
     `Audit: ${planTitle || "Internal Audit"}`,
@@ -79,7 +118,7 @@ export async function POST(req: Request) {
   ].join("\n");
 
   if (!apiKey) {
-    return NextResponse.json({ findings: heuristicFindings(notes, departments), source: "heuristic" });
+    return NextResponse.json({ findings: heuristicFindings(notes, departments, clauses), source: "heuristic" });
   }
 
   let lastError = "";
@@ -106,7 +145,7 @@ export async function POST(req: Request) {
       }
       const json = await res.json();
       const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "";
-      const findings = parseFindings(text);
+      const findings = parseFindings(text, clauses);
       if (findings) return NextResponse.json({ findings, source: "generated" });
       lastError = "could not parse model output";
     } catch (e: any) {
@@ -114,6 +153,6 @@ export async function POST(req: Request) {
     }
   }
 
-  const fallback = heuristicFindings(notes, departments);
+  const fallback = heuristicFindings(notes, departments, clauses);
   return NextResponse.json({ findings: fallback, source: "heuristic", lastError }, { status: 200 });
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
 interface AuditPlan {
   id: string;
   title: string;
@@ -15,6 +15,7 @@ interface AuditPlan {
   created_at: string;
   date_of_plan: string | null;
   audit_period: string | null;
+  source: "internal" | "iso";
   findings: Finding[];
 }
 
@@ -73,16 +74,25 @@ export default function AuditFindings() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: p }, { data: b }] = await Promise.all([
+    const [{ data: p }, { data: b }, { data: isoPlans }, { data: schedData }] = await Promise.all([
       supabase.from("internal_audits").select("*").order("created_at", { ascending: false }),
       supabase.from("branches").select("*"),
+      supabase.from("audit_plans").select("*").order("created_at", { ascending: false }),
+      supabase.from("audit_schedules").select("*"),
     ]);
     const branchName = new Map<string, string>((b || []).map((r: any) => [r.id, r.name]));
-    setPlans((p || []).map((r: any) => ({
+    const isoBranch = new Map<string, string>((schedData || []).map((sc: any) => [sc.id, branchName.get(sc.branch_id) || ""]));
+    const intPlans: AuditPlan[] = (p || []).map((r: any) => ({
       id: r.id, title: r.title, branch_id: r.branch_id, branch_name: branchName.get(r.branch_id) || "Unassigned",
       document_number: r.document_number, created_at: r.created_at, date_of_plan: r.date_of_plan,
-      audit_period: r.audit_period, findings: r.findings || [],
-    })));
+      audit_period: r.audit_period, findings: r.findings || [], source: "internal",
+    }));
+    const isoArr: AuditPlan[] = (isoPlans || []).map((r: any) => ({
+      id: r.id, title: r.title, branch_id: r.branch_id, branch_name: isoBranch.get(r.schedule_id) || "Unassigned",
+      document_number: r.document_number, created_at: r.created_at, date_of_plan: r.date_of_plan,
+      audit_period: r.audit_period, findings: r.findings || [], source: "iso",
+    }));
+    setPlans([...intPlans, ...isoArr].sort((a, z) => (z.created_at || "").localeCompare(a.created_at || "")));
     setLoading(false);
   }, [supabase]);
 
@@ -93,7 +103,9 @@ export default function AuditFindings() {
   }
 
   async function persist(planId: string, findings: Finding[]) {
-    const { error: err } = await supabase.from("internal_audits").update({ findings, updated_at: new Date().toISOString() }).eq("id", planId);
+    const plan = plans.find((p) => p.id === planId);
+    const table = plan?.source === "iso" ? "audit_plans" : "internal_audits";
+    const { error: err } = await supabase.from(table).update({ findings, updated_at: new Date().toISOString() }).eq("id", planId);
     if (err) showErr(err.message);
   }
 
@@ -217,7 +229,12 @@ export default function AuditFindings() {
                             className="w-full px-6 py-4 flex flex-wrap items-center justify-between gap-3 hover:bg-white/5 transition-colors text-left"
                           >
                             <div className="min-w-0">
-                              <h3 className="text-white font-medium">{plan.title}</h3>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-white font-medium">{plan.title}</h3>
+                                <span className={`px-2 py-0.5 text-[10px] rounded-full ${plan.source === "iso" ? "bg-blue-500/20 border border-blue-500/30 text-blue-200" : "bg-purple-500/20 border border-purple-500/30 text-purple-200"}`}>
+                                  {plan.source === "iso" ? "ISO 9001" : "Internal"}
+                                </span>
+                              </div>
                               <p className="text-xs text-blue-200/40 mt-1">
                                 {[plan.document_number, fmtDate(plan.date_of_plan), plan.audit_period].filter(Boolean).join(" · ") || "No date"}
                               </p>
@@ -253,7 +270,7 @@ export default function AuditFindings() {
                               </div>
 
                               {plan.findings.length === 0 ? (
-                                <p className="text-sm text-blue-200/40">No findings generated for this audit yet. Go to Audit Records → Internal to generate them from your notes.</p>
+                                <p className="text-sm text-blue-200/40">No findings generated for this audit yet. Go to Audit Records → Internal or Audit Report → ISO 9001 to generate them from your notes.</p>
                               ) : (
                                 <div className="space-y-3">
                                   {plan.findings.map((f, i) => {
@@ -271,6 +288,7 @@ export default function AuditFindings() {
                                                 {SEVERITIES.map((sev) => <option key={sev} value={sev} className="bg-slate-900">{sev}</option>)}
                                               </select>
                                               <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
+                                              {f.clause && <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">Clause {f.clause}</span>}
                                               <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(i + 1).padStart(2, "0")}</span>
                                             </div>
                                             <p className={`text-sm ${resolved ? "text-white/50 line-through" : "text-white/80"}`}>{f.detail}</p>

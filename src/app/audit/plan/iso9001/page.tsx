@@ -11,7 +11,7 @@ interface AuditSchedule {
   departments: string[]; branch_name?: string;
 }
 
-interface Finding { clause: string; detail: string; type: "Observation" | "Nonconformity" | "Opportunity"; }
+interface Finding { clause?: string; department?: string; detail: string; type: string; recommendation?: string; resolved?: boolean; }
 interface Nonconformity { clause: string; description: string; corrective_action: string; target_date: string; responsible: string; status: string; }
 
 interface AuditPlan {
@@ -67,6 +67,16 @@ const ISO_CLAUSES = [
   ]},
 ];
 
+const SEV_CHIP: Record<string, string> = {
+  Critical: "bg-red-500/20 text-red-300",
+  High: "bg-orange-500/20 text-orange-200",
+  Medium: "bg-amber-500/20 text-amber-300",
+  Low: "bg-blue-500/20 text-blue-300",
+  Nonconformity: "bg-red-500/20 text-red-300",
+  Opportunity: "bg-blue-500/20 text-blue-300",
+  Observation: "bg-amber-500/20 text-amber-300",
+};
+
 export default function AuditPlanPage() {
   const supabase = createClient();
   const [schedules, setSchedules] = useState<AuditSchedule[]>([]);
@@ -78,9 +88,6 @@ export default function AuditPlanPage() {
   const [planScope, setPlanScope] = useState("");
   const [planObjectives, setPlanObjectives] = useState("");
   const [planTeam, setPlanTeam] = useState("");
-  const [checklist, setChecklist] = useState<Record<string, string>>({});
-  const [remarks, setRemarks] = useState<Record<string, string>>({});
-  const [expandedClauses, setExpandedClauses] = useState<string[]>(["4"]);
 
   const [viewingPlan, setViewingPlan] = useState<string | null>(null);
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
@@ -88,21 +95,6 @@ export default function AuditPlanPage() {
   const [editScope, setEditScope] = useState("");
   const [editObjectives, setEditObjectives] = useState("");
   const [editTeam, setEditTeam] = useState("");
-  const [editChecklist, setEditChecklist] = useState<Record<string, string>>({});
-  const [editRemarks, setEditRemarks] = useState<Record<string, string>>({});
-
-  const [findings, setFindings] = useState<Finding[]>([]);
-  const [nonconformities, setNonconformities] = useState<Nonconformity[]>([]);
-  const [showFindingForm, setShowFindingForm] = useState(false);
-  const [findingClause, setFindingClause] = useState("");
-  const [findingDetail, setFindingDetail] = useState("");
-  const [findingType, setFindingType] = useState<Finding["type"]>("Observation");
-  const [showNCForm, setShowNCForm] = useState(false);
-  const [ncClause, setNcClause] = useState("");
-  const [ncDesc, setNcDesc] = useState("");
-  const [ncAction, setNcAction] = useState("");
-  const [ncDate, setNcDate] = useState("");
-  const [ncResp, setNcResp] = useState("");
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -138,29 +130,24 @@ export default function AuditPlanPage() {
   const availableSchedules = schedules.filter((s) => !plansWithPlan.has(s.id));
   const selectedSched = selectedSchedule ? scheduleMap[selectedSchedule] : null;
 
-  function toggleClause(clause: string) {
-    setExpandedClauses((prev) => prev.includes(clause) ? prev.filter((c) => c !== clause) : [...prev, clause]);
-  }
-
   async function handleCreatePlan(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedSchedule || !planTitle.trim()) return showErr("Select a schedule and enter a title.");
     const cl: { clause: string; item: string; result: string; remark: string }[] = [];
     ISO_CLAUSES.forEach((c) => c.items.forEach((item) => {
-      const key = item;
-      if (checklist[key]) cl.push({ clause: c.clause, item, result: checklist[key], remark: remarks[key] || "" });
+      cl.push({ clause: c.clause, item, result: "", remark: "" });
     }));
     setSaving(true);
     const { error } = await supabase.from("audit_plans").insert({
       schedule_id: selectedSchedule, title: planTitle.trim(), scope: planScope.trim() || null,
       objectives: planObjectives.trim() || null, criteria: "ISO 9001:2015",
       audit_team: planTeam.trim() || null, description: null, status: "Draft",
-      checklist: cl, findings, nonconformities, overall_result: "Open",
+      checklist: cl, findings: [], nonconformities: [], overall_result: "Open",
     });
     setSaving(false);
     if (error) return showErr(error.message);
-    setPlanTitle(""); setPlanScope(""); setPlanObjectives(""); setPlanTeam(""); setChecklist({}); setRemarks({});
-    setSelectedSchedule(null); setFindings([]); setNonconformities([]);
+    setPlanTitle(""); setPlanScope(""); setPlanObjectives(""); setPlanTeam("");
+    setSelectedSchedule(null);
     showMsg("Audit plan created.");
     fetchData();
   }
@@ -178,26 +165,14 @@ export default function AuditPlanPage() {
     setEditScope(plan.scope || "");
     setEditObjectives(plan.objectives || "");
     setEditTeam(plan.audit_team || "");
-    const cl: Record<string, string> = {};
-    const rm: Record<string, string> = {};
-    plan.checklist.forEach((c) => { cl[c.item] = c.result; rm[c.item] = c.remark; });
-    setEditChecklist(cl); setEditRemarks(rm);
     setViewingPlan(null);
   }
 
   async function handleSaveEdit(id: string) {
-    const cl: { clause: string; item: string; result: string; remark: string }[] = [];
-    ISO_CLAUSES.forEach((c) => c.items.forEach((item) => {
-      const key = item;
-      if (editChecklist[key]) cl.push({ clause: c.clause, item, result: editChecklist[key], remark: editRemarks[key] || "" });
-    }));
-    const allDone = cl.every((c) => c.result);
-    const anyDone = cl.some((c) => c.result);
     setSaving(true);
     const { error } = await supabase.from("audit_plans").update({
       title: editTitle.trim(), scope: editScope.trim() || null, objectives: editObjectives.trim() || null,
-      audit_team: editTeam.trim() || null, checklist: cl,
-      status: allDone ? "Completed" : anyDone ? "In Progress" : "Draft",
+      audit_team: editTeam.trim() || null,
       updated_at: new Date().toISOString(),
     }).eq("id", id);
     setSaving(false);
@@ -207,30 +182,28 @@ export default function AuditPlanPage() {
     fetchData();
   }
 
-  function addFinding() {
-    if (!findingClause || !findingDetail.trim()) return;
-    setFindings([...findings, { clause: findingClause, detail: findingDetail.trim(), type: findingType }]);
-    setFindingDetail(""); setShowFindingForm(false);
-  }
-
-  function addNC() {
-    if (!ncClause || !ncDesc.trim()) return;
-    setNonconformities([...nonconformities, { clause: ncClause, description: ncDesc.trim(), corrective_action: ncAction.trim(), target_date: ncDate, responsible: ncResp.trim(), status: "Open" }]);
-    setNcClause(""); setNcDesc(""); setNcAction(""); setNcDate(""); setNcResp(""); setShowNCForm(false);
-  }
-
-  function getClauseProgress(checklist: { clause: string; item: string; result: string }[]) {
-    const total = ISO_CLAUSES.reduce((sum, c) => sum + c.items.length, 0);
-    const done = checklist.filter((c) => c.result).length;
-    return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+  function renderPlainClauses() {
+    return (
+      <div className="space-y-3">
+        {ISO_CLAUSES.map((clause) => (
+          <div key={clause.clause} className="border border-white/5 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-white/[0.03]">
+              <span className="text-white font-medium text-sm">Clause {clause.clause}: {clause.title}</span>
+            </div>
+            <div className="px-4 py-2">
+              {clause.items.map((item) => (
+                <div key={item} className="py-1.5 border-b border-white/5 last:border-0">
+                  <span className="text-sm text-white/70">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   function renderPlanView(plan: AuditPlan) {
-    const prog = getClauseProgress(plan.checklist);
-    const clMap: Record<string, string> = {};
-    const rmMap: Record<string, string> = {};
-    plan.checklist.forEach((c) => { clMap[c.item] = c.result; rmMap[c.item] = c.remark; });
-
     return (
       <div className="p-6">
         <div className="flex items-start justify-between mb-4">
@@ -251,43 +224,8 @@ export default function AuditPlanPage() {
           <div><span className="text-blue-200/50">Criteria: </span><span className="text-white/80">{plan.criteria}</span></div>
         </div>
 
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-blue-200/70">Completion</span>
-            <span className="text-sm text-white/70">{prog.done}/{prog.total} items ({prog.pct}%)</span>
-          </div>
-          <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${prog.pct}%` }} />
-          </div>
-        </div>
-
-        {ISO_CLAUSES.map((clause) => {
-          const clauseItems = clause.items.map((item) => ({ item, result: clMap[item] || "", remark: rmMap[item] || "" }));
-          const clauseDone = clauseItems.filter((i) => i.result).length;
-          return (
-            <div key={clause.clause} className="mb-3 border border-white/5 rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 bg-white/[0.03]">
-                <div>
-                  <span className="text-white font-medium text-sm">Clause {clause.clause}: {clause.title}</span>
-                  <span className="text-xs text-blue-200/40 ml-2">{clauseDone}/{clause.items.length}</span>
-                </div>
-              </div>
-              <div className="px-4 py-2">
-                {clauseItems.map((ci) => (
-                  <div key={ci.item} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                    <span className="text-sm text-white/70 flex-1">{ci.item}</span>
-                    {ci.result ? (
-                      <span className={`px-2 py-0.5 text-xs rounded-full ${ci.result === "Conforming" ? "bg-green-500/20 text-green-300" : ci.result === "Non-conforming" ? "bg-red-500/20 text-red-300" : ci.result === "Partial" ? "bg-amber-500/20 text-amber-300" : "bg-blue-500/20 text-blue-300"}`}>{ci.result}</span>
-                    ) : (
-                      <span className="text-xs text-white/30">Not assessed</span>
-                    )}
-                    {ci.remark && <span className="text-xs text-blue-200/40 ml-2 max-w-[200px] truncate">{ci.remark}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        <h4 className="text-sm font-semibold text-white mb-3">Scope of the Audit: ISO 9001:2015 Clauses</h4>
+        {renderPlainClauses()}
 
         {plan.findings && plan.findings.length > 0 && (
           <div className="mt-6">
@@ -295,8 +233,15 @@ export default function AuditPlanPage() {
             <div className="space-y-2">
               {plan.findings.map((f, i) => (
                 <div key={i} className="p-3 bg-white/5 rounded-lg flex items-start gap-3">
-                  <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${f.type === "Nonconformity" ? "bg-red-500/20 text-red-300" : f.type === "Opportunity" ? "bg-blue-500/20 text-blue-300" : "bg-amber-500/20 text-amber-300"}`}>{f.type}</span>
-                  <div><span className="text-xs text-blue-200/50">Clause {f.clause}</span><p className="text-sm text-white/80">{f.detail}</p></div>
+                  <span className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${SEV_CHIP[f.type] || "bg-amber-500/20 text-amber-300"}`}>{f.type}</span>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      {f.clause && <span className="text-xs text-blue-200/50">Clause {f.clause}</span>}
+                      {f.department && <span className="text-xs text-purple-200/70">{f.department}</span>}
+                    </div>
+                    <p className="text-sm text-white/80">{f.detail}</p>
+                    {f.recommendation && <p className="text-xs text-blue-200/50 mt-1">Recommendation: {f.recommendation}</p>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -329,10 +274,6 @@ export default function AuditPlanPage() {
   }
 
   function renderPlanEdit(plan: AuditPlan) {
-    const clMap: Record<string, string> = {};
-    const rmMap: Record<string, string> = {};
-    plan.checklist.forEach((c) => { clMap[c.item] = c.result; rmMap[c.item] = c.remark; });
-
     return (
       <div className="p-6">
         <div className="mb-4">
@@ -352,31 +293,7 @@ export default function AuditPlanPage() {
             <input type="text" value={editTeam} onChange={(e) => setEditTeam(e.target.value)} className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
-        {ISO_CLAUSES.map((clause) => (
-          <div key={clause.clause} className="mb-3 border border-white/5 rounded-lg overflow-hidden">
-            <button type="button" onClick={() => toggleClause(clause.clause)} className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.05]">
-              <span className="text-white font-medium text-sm">Clause {clause.clause}: {clause.title}</span>
-              <svg className={`w-4 h-4 text-white/40 transition-transform ${expandedClauses.includes(clause.clause) ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-            </button>
-            {expandedClauses.includes(clause.clause) && (
-              <div className="px-4 py-2 space-y-2">
-                {clause.items.map((item) => (
-                  <div key={item} className="flex items-center gap-2 py-1.5">
-                    <span className="text-sm text-white/70 flex-1">{item}</span>
-                    <select value={editChecklist[item] || ""} onChange={(e) => setEditChecklist({ ...editChecklist, [item]: e.target.value })} className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
-                      <option value="" className="bg-slate-800">—</option>
-                      <option value="Conforming" className="bg-slate-800">Conforming</option>
-                      <option value="Non-conforming" className="bg-slate-800">Non-conforming</option>
-                      <option value="Partial" className="bg-slate-800">Partial</option>
-                      <option value="Not Applicable" className="bg-slate-800">N/A</option>
-                    </select>
-                    <input type="text" value={editRemarks[item] || ""} onChange={(e) => setEditRemarks({ ...editRemarks, [item]: e.target.value })} placeholder="Remark" className="w-32 px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+        {renderPlainClauses()}
         <div className="flex gap-2 mt-4">
           <button onClick={() => handleSaveEdit(plan.id)} disabled={saving} className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-sm rounded-lg transition-colors">{saving ? "Saving..." : "Save"}</button>
           <button onClick={() => { setEditingPlan(null); setViewingPlan(plan.id); }} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition-colors">Cancel</button>
@@ -438,43 +355,11 @@ export default function AuditPlanPage() {
               </div>
             </div>
 
-            <p className="text-xs text-blue-200/40 mb-2">Criteria: <strong className="text-white/60">ISO 9001:2015</strong></p>
+            <p className="text-xs text-blue-200/40 mb-3">Criteria: <strong className="text-white/60">ISO 9001:2015</strong></p>
 
             <div className="mb-4">
-              {ISO_CLAUSES.map((clause) => (
-                <div key={clause.clause} className="mb-3 border border-white/5 rounded-lg overflow-hidden">
-                  <button type="button" onClick={() => toggleClause(clause.clause)} className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.05]">
-                    <span className="text-white font-medium text-sm">Clause {clause.clause}: {clause.title}</span>
-                    <svg className={`w-4 h-4 text-white/40 transition-transform ${expandedClauses.includes(clause.clause) ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-                  </button>
-                  {expandedClauses.includes(clause.clause) && (
-                    <div className="px-4 py-2 space-y-2">
-                      {clause.items.map((item) => (
-                        <div key={item} className="flex items-center gap-2 py-1.5">
-                          <span className="text-sm text-white/70 flex-1">{item}</span>
-                          <select value={checklist[item] || ""} onChange={(e) => setChecklist({ ...checklist, [item]: e.target.value })} className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
-                            <option value="" className="bg-slate-800">—</option>
-                            <option value="Conforming" className="bg-slate-800">Conforming</option>
-                            <option value="Non-conforming" className="bg-slate-800">Non-conforming</option>
-                            <option value="Partial" className="bg-slate-800">Partial</option>
-                            <option value="Not Applicable" className="bg-slate-800">N/A</option>
-                          </select>
-                          <input type="text" value={remarks[item] || ""} onChange={(e) => setRemarks({ ...remarks, [item]: e.target.value })} placeholder="Remark" className="w-32 px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+              {renderPlainClauses()}
             </div>
-
-            {selectedSchedule && (
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-white">Findings & Nonconformities (optional, can add after creation)</h3>
-                </div>
-              </div>
-            )}
 
             <div className="flex justify-end">
               <button type="submit" disabled={saving} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition-all duration-200 shadow-lg shadow-blue-600/25">
@@ -495,7 +380,6 @@ export default function AuditPlanPage() {
           ) : (
             plans.map((plan) => {
               const sched = scheduleMap[plan.schedule_id];
-              const prog = getClauseProgress(plan.checklist);
               return (
                 <div key={plan.id} className="border-b border-white/5 last:border-0">
                   {editingPlan === plan.id ? (
@@ -518,12 +402,7 @@ export default function AuditPlanPage() {
                           {sched && <p className="text-xs text-blue-200/50 mt-1">{sched.branch_name} · {sched.date_from} → {sched.date_to}{plan.audit_team ? ` · Team: ${plan.audit_team}` : ""}</p>}
                         </div>
                         <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="text-xs text-blue-200/50">{prog.done}/{prog.total}</div>
-                            <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden mt-1">
-                              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${prog.pct}%` }} />
-                            </div>
-                          </div>
+                          <span className="text-xs text-blue-200/50">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
                           <div className="flex gap-2">
                             <button onClick={(e) => { e.stopPropagation(); startEdit(plan); }} className="text-xs text-blue-300 hover:text-white">Edit</button>
                             <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete?")) handleDeletePlan(plan.id); }} className="text-xs text-red-400 hover:text-red-300">Delete</button>
