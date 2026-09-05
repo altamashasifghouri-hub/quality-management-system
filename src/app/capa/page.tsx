@@ -247,8 +247,8 @@ export default function CapaPage() {
       let y = margin;
 
       const logoData = await assetToDataUrl(LOGO);
-      embedImage(doc, logoData, (pageWidth - 40) / 2, y, 40, 28);
-      y += 42;
+      embedImage(doc, logoData, (pageWidth - 40) / 2, y, 40, 34);
+      y += 46;
       doc.setFontSize(16); doc.setTextColor(15, 23, 42);
       doc.text("CORRECTIVE ACTION & PREVENTIVE ACTION", pageWidth / 2, y, { align: "center" });
       y += 7;
@@ -289,7 +289,7 @@ export default function CapaPage() {
         return y;
       };
       const sectionTitle = (t: string) => {
-        ensure(20);
+        ensure(40);
         doc.setFontSize(12); doc.setTextColor(29, 78, 216);
         doc.text(t, margin, y);
         y += 7;
@@ -352,13 +352,12 @@ export default function CapaPage() {
       }
 
       sectionTitle("8. Approval");
-      const authorizeName = settings.ceo_name || settings.hr_name || plan.prepared_by || "Authorized Signatory";
+      const { data: authData } = await supabase.auth.getUser();
+      const userName = authData.user?.user_metadata?.full_name || settings.ceo_name || settings.hr_name || "Authorized Signatory";
       const sigUrl = plan.signature || SIG_DEFAULT;
       ensure(52);
-      const capaLogo = await assetToDataUrl(LOGO);
-      embedImage(doc, capaLogo, pageWidth - margin - 40, y + 6, 40, 28);
       doc.setFontSize(10); doc.setTextColor(30, 41, 59);
-      doc.text(`Authorized by: ${authorizeName}`, margin, y + 14);
+      doc.text(`${userName}, Quality Assurance Executive`, margin, y + 14);
       const sigData = await assetToDataUrl(sigUrl);
       embedImage(doc, sigData, margin, y + 20, 52, 20);
       doc.setDrawColor(30, 41, 59);
