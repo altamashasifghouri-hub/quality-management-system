@@ -20,7 +20,7 @@ export default function Home() {
               />
             </svg>
           </div>
-          <h1 className="text-5xl font-bold text-white tracking-tight">
+          <h1 className="text-3xl sm:text-5xl font-bold text-white tracking-tight leading-tight">
             Quality Management System
           </h1>
           <p className="text-lg text-blue-200/70 max-w-md mx-auto">
@@ -28,7 +28,7 @@ export default function Home() {
             continuous improvement.
           </p>
         </div>
-        <div className="flex gap-4 justify-center">
+        <div className="flex flex-wrap gap-4 justify-center">
           <Link
             href="/auth/signin"
             className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-all duration-200 shadow-lg shadow-blue-600/25 hover:shadow-blue-500/40"

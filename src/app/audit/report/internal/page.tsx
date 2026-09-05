@@ -641,7 +641,7 @@ export default function InternalAuditReport() {
           </Link>
         </div>
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Internal Audit Report</h1>
             <p className="text-blue-200/60">Generate internal audit reports from audit plans</p>
@@ -848,9 +848,9 @@ export default function InternalAuditReport() {
 
         {viewingReport && (
           <div className="mt-8">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h2 className="text-xl font-bold text-white">Internal Audit Report</h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {!viewingReport.pdf_url && (
                   <button onClick={() => generatePdf(viewingReport)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
                     {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : "Generate & Save PDF"}
@@ -867,14 +867,14 @@ export default function InternalAuditReport() {
               </div>
             </div>
 
-            <div className="bg-white text-slate-900 rounded-2xl p-10 shadow-2xl">
+            <div className="bg-white text-slate-900 rounded-2xl p-5 sm:p-10 shadow-2xl overflow-x-auto">
               <div className="text-center border-b-2 border-purple-600 pb-4 mb-6">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={LOGO} alt="Brand logo" className="h-16 mx-auto mb-3" />
                 <h1 className="text-2xl font-bold">INTERNAL AUDIT REPORT</h1>
               </div>
 
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm mb-6">
                 <div><span className="text-slate-500">Hotel / Branch Name:</span> <span className="font-medium">{viewingBranch?.name || viewingPlan?.branch_name}</span></div>
                 <div><span className="text-slate-500">Report Title:</span> <span className="font-medium">{viewingReport.title}</span></div>
                 <div><span className="text-slate-500">Fieldwork Dates:</span> <span className="font-medium">{viewingReport.fieldwork_dates || "—"}</span></div>

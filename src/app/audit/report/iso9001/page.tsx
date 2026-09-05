@@ -291,7 +291,7 @@ export default function Iso9001Report() {
           </Link>
         </div>
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">ISO 9001 Report</h1>
             <p className="text-blue-200/60">Write your audit findings notes — AI organizes them by department and ISO clause</p>

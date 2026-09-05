@@ -306,11 +306,11 @@ export default function AuditSchedulePage() {
           ) : (
             <div className="space-y-3">
               {schedules.map((s) => (
-                <div key={s.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                <div key={s.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white/5 rounded-xl border border-white/5">
                   <div className="flex items-center gap-4 flex-1">
                     <div className={`w-3 h-3 rounded-full ${branchColorMap[s.branch_id] || "bg-gray-500"}`} />
                     <div className="flex-1">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span className="text-white font-medium">{s.branch_name}</span>
                         {planBadge(s.id)}
                         {planBySchedule[s.id] && <span className="text-xs text-blue-200/40">· 1 plan</span>}
@@ -322,7 +322,7 @@ export default function AuditSchedulePage() {
                       <div className="text-xs text-blue-200/40 mt-1">{s.date_from} → {s.date_to}{s.auditor ? ` · ${s.auditor}` : ""}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-4">
+                  <div className="flex items-center gap-2 sm:ml-4 shrink-0">
                     <select value={s.status} onChange={(e) => handleStatusChange(s.id, e.target.value)}
                       className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
                       <option value="Planned" className="bg-slate-800">Planned</option>

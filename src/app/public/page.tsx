@@ -23,7 +23,7 @@ export default function PublicView() {
 
       <main className="max-w-7xl mx-auto px-6 py-16">
         <div className="text-center mb-16">
-          <h1 className="text-4xl font-bold text-white mb-3">
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3 leading-tight">
             Quality Management System
           </h1>
           <p className="text-lg text-blue-200/70 max-w-2xl mx-auto">

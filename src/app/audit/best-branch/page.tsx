@@ -140,7 +140,8 @@ export default function BestBranch() {
               <h2 className="text-lg font-semibold text-white">Branch Ranking</h2>
               <p className="text-xs text-blue-200/40 mt-1">Based on the audits recorded in the selected period and the findings marked resolved</p>
             </div>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[720px]">
               <thead>
                 <tr className="bg-white/10 text-left text-xs text-blue-200/60">
                   <th className="px-6 py-3 font-medium w-16">#</th>
@@ -195,6 +196,7 @@ export default function BestBranch() {
                 })}
               </tbody>
             </table>
+          </div>
           </div>
         )}
       </main>

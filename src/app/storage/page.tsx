@@ -182,7 +182,7 @@ export default function StoragePage() {
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
         {connected === false && driveConfigured && (
-          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm rounded-lg px-4 py-3 mb-6 flex items-center justify-between gap-4">
+          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm rounded-lg px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center items-start justify-between gap-4">
             <div>
               <p className="font-medium text-yellow-200">Google Drive is not connected</p>
               <p className="text-yellow-300/60 mt-1">Connect your Google account to store audit plan PDFs in your Drive folders.</p>
@@ -238,12 +238,12 @@ export default function StoragePage() {
             </div>
 
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+              <div className="px-6 py-4 border-b border-white/10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Google Drive</h2>
                   <p className="text-xs text-blue-200/60 mt-1">{connected ? `${totalFiles} file(s) listed` : "Connect to view files"}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {connected && (
                     <button onClick={disconnect} disabled={busy} className={`${btnCls} bg-white/10 hover:bg-white/20`}>Disconnect</button>
                   )}
@@ -254,7 +254,7 @@ export default function StoragePage() {
               </div>
 
               <div className="px-6 py-4 border-b border-white/10">
-                <div className="flex items-center justify-between text-sm mb-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm mb-2">
                   <span className="text-white/80">Storage used</span>
                   <span className="text-blue-200/60 text-xs">{fmtBytes(dBytes)} in folders · {fmtBytes(dQuota)} of {fmtBytes(dLimit)} Drive quota · {dPct.toFixed(2)}%</span>
                 </div>
@@ -263,7 +263,7 @@ export default function StoragePage() {
                 </div>
               </div>
 
-              <div className="px-6 pt-4 flex gap-2">
+              <div className="px-6 pt-4 flex flex-wrap gap-2">
                 <button onClick={() => setActiveType("plan")} className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${activeType === "plan" ? "bg-blue-600 text-white" : "bg-white/10 text-blue-200/70 hover:bg-white/15"}`}>
                   Audit Plan {folders.plan.length ? `(${folders.plan.length})` : ""}
                 </button>
