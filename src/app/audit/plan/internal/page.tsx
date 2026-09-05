@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { CLOUDINARY_UPLOAD_URL, CLOUDINARY_UPLOAD_PRESET, CLOUDINARY_UPLOAD_FOLDER } from "@/lib/cloudinary";
+import { CLOUDINARY_UPLOAD_URL } from "@/lib/cloudinary";
 
 interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; departments: Department[]; }
@@ -450,15 +450,25 @@ export default function InternalAuditPlan() {
         doc.addImage(dataUrl, "PNG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
-      doc.save(`${(plan.branch_name || "Internal").replace(/[^a-zA-Z0-9]+/g, "_")}_Audit_Plan.pdf`);
-
       setPdfSaving(true);
       try {
+        const sigRes = await fetch("/api/upload-signature", { method: "POST" });
+        if (!sigRes.ok) {
+          showErr("PDF generated but Cloudinary upload is not authorized.");
+          return;
+        }
+        const sig = await sigRes.json();
+        if (!sig.signature) {
+          showErr("PDF generated but Cloudinary upload failed (signature).");
+          return;
+        }
         const blob = doc.output("blob");
         const formData = new FormData();
         formData.append("file", blob, `${sanitizeFile(plan.branch_name || "Internal")}_Audit_Plan.pdf`);
-        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-        formData.append("folder", CLOUDINARY_UPLOAD_FOLDER);
+        formData.append("api_key", sig.api_key);
+        formData.append("timestamp", sig.timestamp);
+        formData.append("signature", sig.signature);
+        formData.append("folder", sig.folder);
         const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
         if (res.ok) {
           const json = await res.json();
@@ -473,7 +483,8 @@ export default function InternalAuditPlan() {
             }
           }
         } else {
-          showErr("PDF generated but Cloudinary upload failed.");
+          const errJson = await res.json().catch(() => ({}));
+          showErr(errJson?.error?.message || "PDF generated but Cloudinary upload failed.");
         }
       } catch {
         showErr("PDF generated but Cloudinary upload failed.");
@@ -719,7 +730,7 @@ export default function InternalAuditPlan() {
               <h2 className="text-xl font-bold text-white">Audit Plan Document</h2>
               <div className="flex gap-2">
                 <button onClick={() => generatePdf(viewPlan)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                  {downloadingPdf ? (pdfSaving ? "Saving to Cloudinary..." : "Generating...") : "Download PDF"}
+                  {downloadingPdf ? (pdfSaving ? "Saving to Cloudinary..." : "Generating...") : "Save to Cloudinary"}
                 </button>
                 {viewPlan.pdf_url && (
                   <a href={viewPlan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
