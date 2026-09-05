@@ -82,6 +82,16 @@ export default function AuditManagement() {
               <h3 className="text-white font-semibold mb-1">Best Branch</h3>
             </div>
           </Link>
+          <Link href="/capa">
+            <div className="bg-white/5 backdrop-blur-sm border border-amber-500/20 rounded-xl p-6 hover:bg-white/10 transition-all duration-200 cursor-pointer group text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-amber-500/20 border border-amber-500/30 mb-4 group-hover:bg-amber-500/30 transition-colors">
+                <svg className="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                </svg>
+              </div>
+              <h3 className="text-white font-semibold mb-1">Root Causes and CAPA</h3>
+            </div>
+          </Link>
         </div>
       </main>
     </div>

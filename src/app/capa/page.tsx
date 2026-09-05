@@ -342,9 +342,9 @@ export default function CapaPage() {
       <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-16">
         <div className="mb-8">
-          <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+          <Link href="/audit" className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
-            Back to Dashboard
+            Back to Audit Management
           </Link>
         </div>
 
