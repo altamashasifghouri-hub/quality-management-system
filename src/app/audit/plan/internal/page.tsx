@@ -19,6 +19,7 @@ interface ProgramRow { department: string; duration: string; }
 interface InternalAudit {
   id: string;
   title: string;
+  document_number: string | null;
   branch_id: string;
   branch_name?: string;
   schedule_id: string | null;
@@ -44,6 +45,7 @@ interface InternalAudit {
 
 interface PlanForm {
   title: string;
+  document_number: string;
   branch_id: string;
   schedule_id: string;
   audit_period: string;
@@ -100,8 +102,13 @@ function sanitizeFile(name: string) {
   return name.replace(/[^a-zA-Z0-9]+/g, "_");
 }
 
+function genDocNumber(branchName: string, count: number) {
+  const code = (branchName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "QMS");
+  return `QMS/IA/${new Date().getFullYear()}/${code}-${String(count + 1).padStart(3, "0")}`;
+}
+
 const emptyForm = (): PlanForm => ({
-  title: "", branch_id: "", schedule_id: "", audit_period: "", plan_version: "",
+  title: "", document_number: "", branch_id: "", schedule_id: "", audit_period: "", plan_version: "",
   prepared_by: "", date_of_plan: todayStr(),
   purpose: "", period_covered: "", locations_covered: "", exclusions: "",
   team: "", departments: [], approach: [...APPROACH_ITEMS], program: {}, signature: "",
@@ -148,7 +155,7 @@ export default function InternalAuditPlan() {
       id: s.id, branch_id: s.branch_id, date_from: s.date_from, date_to: s.date_to, departments: s.departments || [],
     })));
     setPlans((planData || []).map((p: any) => ({
-      id: p.id, title: p.title, branch_id: p.branch_id,
+      id: p.id, title: p.title, document_number: p.document_number, branch_id: p.branch_id,
       branch_name: branchName.get(p.branch_id) || "",
       schedule_id: p.schedule_id, departments: p.departments || [], audit_team: p.audit_team,
       findings: p.findings || [], status: p.status || "Draft", created_at: p.created_at,
@@ -171,8 +178,9 @@ export default function InternalAuditPlan() {
 
   function onBranchChange(id: string) {
     const branch = branches.find((b) => b.id === id);
+    const docNumber = !form.document_number && branch ? genDocNumber(branch.name, plans.length) : form.document_number;
     setF({
-      branch_id: id, schedule_id: "", departments: [],
+      branch_id: id, schedule_id: "", departments: [], document_number: docNumber,
       purpose: branch
         ? `The purpose of this internal audit is to evaluate the adequacy and effectiveness of internal controls, safeguard assets, ensure compliance with company policies, brand standards and applicable laws, and identify opportunities for operational improvement at ${branch.name}.`
         : "",
@@ -217,7 +225,8 @@ export default function InternalAuditPlan() {
 
     setSaving(true);
     const payload = {
-      title: form.title.trim(), branch_id: form.branch_id, schedule_id: form.schedule_id,
+      title: form.title.trim(), document_number: form.document_number.trim() || null,
+      branch_id: form.branch_id, schedule_id: form.schedule_id,
       departments: form.departments, audit_team: form.team.trim() || null,
       audit_period: form.audit_period.trim() || null, plan_version: form.plan_version.trim() || null,
       prepared_by: form.prepared_by.trim() || null, date_of_plan: form.date_of_plan || null,
@@ -255,7 +264,8 @@ export default function InternalAuditPlan() {
     const program: Record<string, string> = {};
     plan.program.forEach((row) => { program[row.department] = row.duration; });
     setForm({
-      title: plan.title, branch_id: plan.branch_id, schedule_id: plan.schedule_id || "",
+      title: plan.title, document_number: plan.document_number || "",
+      branch_id: plan.branch_id, schedule_id: plan.schedule_id || "",
       audit_period: plan.audit_period || "", plan_version: plan.plan_version || "",
       prepared_by: plan.prepared_by || "", date_of_plan: plan.date_of_plan || todayStr(),
       purpose: plan.purpose || "", period_covered: plan.period_covered || "",
@@ -338,6 +348,7 @@ export default function InternalAuditPlan() {
         body: [
           ["Branch Name", plan.branch_name || "—"],
           ["Audit Title", plan.title || "—"],
+          ["Document Number", plan.document_number || "—"],
           ["Audit Period", plan.audit_period || "—"],
           ["Plan Version", plan.plan_version || "—"],
           ["Prepared by", plan.prepared_by || "—"],
@@ -520,6 +531,10 @@ export default function InternalAuditPlan() {
                 <input value={form.title} onChange={(e) => setF({ title: e.target.value })} placeholder="e.g. Kitchen & Warehousing Internal Audit" className={inputCls} />
               </div>
               <div>
+                <label className={labelCls}>Document Number *</label>
+                <input value={form.document_number} onChange={(e) => setF({ document_number: e.target.value })} placeholder="e.g. QMS/IA/2026/FSL-001" className={inputCls} />
+              </div>
+              <div>
                 <label className={labelCls}>Audit Period</label>
                 <input value={form.audit_period} onChange={(e) => setF({ audit_period: e.target.value })} placeholder="e.g. Q3 2026" className={inputCls} />
               </div>
@@ -683,6 +698,7 @@ export default function InternalAuditPlan() {
                       ))}
                     </div>
                     <p className="text-xs text-blue-200/40 mt-2">
+                      {plan.document_number && <span>{plan.document_number} · </span>}
                       {plan.audit_period && <span>{plan.audit_period} · </span>}
                       {plan.prepared_by && <span>Prepared by {plan.prepared_by}</span>}
                     </p>
@@ -726,6 +742,7 @@ export default function InternalAuditPlan() {
               <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm mb-6">
                 <div><span className="text-slate-500">Branch Name:</span> <span className="font-medium">{viewPlan.branch_name}</span></div>
                 <div><span className="text-slate-500">Audit Title:</span> <span className="font-medium">{viewPlan.title}</span></div>
+                <div><span className="text-slate-500">Document Number:</span> <span className="font-medium">{viewPlan.document_number || "—"}</span></div>
                 <div><span className="text-slate-500">Audit Period:</span> <span className="font-medium">{viewPlan.audit_period || "—"}</span></div>
                 <div><span className="text-slate-500">Plan Version:</span> <span className="font-medium">{viewPlan.plan_version || "—"}</span></div>
                 <div><span className="text-slate-500">Prepared by:</span> <span className="font-medium">{viewPlan.prepared_by || "—"}</span></div>
