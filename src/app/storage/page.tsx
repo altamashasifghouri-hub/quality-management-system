@@ -12,26 +12,21 @@ interface TableInfo {
   db_bytes: number;
 }
 
-interface CloudinaryResource {
-  public_id: string;
-  format: string;
+interface DriveFile {
+  id: string;
+  name: string;
   bytes: number;
-  secure_url: string;
+  mimeType: string;
   created_at: string;
-  resource_type: string;
-}
-
-interface CloudinaryUsage {
-  plan?: string;
-  storageBytes: number;
-  storageLimit: number;
+  url: string;
 }
 
 function fmtBytes(bytes: number) {
   if (!bytes) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function fmtDate(s: string) {
@@ -40,8 +35,9 @@ function fmtDate(s: string) {
 
 export default function StoragePage() {
   const [tables, setTables] = useState<TableInfo[]>([]);
-  const [usage, setUsage] = useState<CloudinaryUsage | null>(null);
-  const [resources, setResources] = useState<CloudinaryResource[]>([]);
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [driveInfo, setDriveInfo] = useState<{ storageBytes: number; storageLimit: number; quotaUsage: number } | null>(null);
+  const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -53,17 +49,30 @@ export default function StoragePage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [tRes, cRes] = await Promise.all([
+      const [tRes, dRes] = await Promise.all([
         fetch("/api/storage?source=supabase"),
-        fetch("/api/storage?source=cloudinary"),
+        fetch("/api/storage?source=drive"),
       ]);
       if (tRes.ok) setTables((await tRes.json()).tables || []);
       else showErr("Could not load Supabase tables.");
-      if (cRes.ok) {
-        const json = await cRes.json();
-        setUsage({ plan: json.plan || "Free", storageBytes: json.storageBytes || 0, storageLimit: json.storageLimit || 0 });
-        setResources(json.resources || []);
-      } else showErr("Could not load Cloudinary storage.");
+      if (dRes.ok) {
+        const json = await dRes.json();
+        setDriveInfo({
+          storageBytes: json.storageBytes || 0,
+          storageLimit: json.storageLimit || 0,
+          quotaUsage: json.quotaUsage || 0,
+        });
+        setFiles(json.files || []);
+        setDriveConfigured(true);
+      } else {
+        const body = await dRes.json().catch(() => ({}));
+        if (body?.error?.includes("not configured") || body?.error?.includes("Drive")) {
+          setDriveConfigured(false);
+        } else {
+          setDriveConfigured(false);
+          showErr(body?.error || "Could not load Google Drive storage.");
+        }
+      }
     } catch {
       showErr("Storage load failed.");
     } finally {
@@ -74,17 +83,15 @@ export default function StoragePage() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const dbBytes = tables.length ? tables[0].db_bytes : 0;
-  const cBytes = usage?.storageBytes || 0;
-  const cLimit = usage?.storageLimit || 0;
-  const cPct = cLimit ? (cBytes / cLimit) * 100 : 0;
+  const dBytes = driveInfo?.storageBytes || 0;
+  const dLimit = driveInfo?.storageLimit || 0;
+  const dQuota = driveInfo?.quotaUsage || 0;
+  const dPct = dLimit ? (dQuota / dLimit) * 100 : 0;
 
-  async function deleteResource(r: CloudinaryResource) {
-    if (!confirm(`Delete "${r.public_id}"?`)) return;
+  async function deleteResource(f: DriveFile) {
+    if (!confirm(`Delete "${f.name}"?`)) return;
     setBusy(true);
-    const res = await fetch(
-      `/api/storage?source=cloudinary&resourceType=${r.resource_type}&publicId=${encodeURIComponent(r.public_id)}`,
-      { method: "DELETE" }
-    );
+    const res = await fetch(`/api/storage?source=drive&fileId=${encodeURIComponent(f.id)}`, { method: "DELETE" });
     setBusy(false);
     if (!res.ok) return showErr((await res.json()).error || "Delete failed.");
     showMsg("Deleted.");
@@ -92,15 +99,12 @@ export default function StoragePage() {
   }
 
   async function deleteAll() {
-    if (resources.length === 0) return;
-    if (!confirm(`Delete all ${resources.length} file(s)?`)) return;
+    if (files.length === 0) return;
+    if (!confirm(`Delete all ${files.length} file(s)?`)) return;
     setBusy(true);
     let ok = true;
-    for (const r of resources) {
-      const res = await fetch(
-        `/api/storage?source=cloudinary&resourceType=${r.resource_type}&publicId=${encodeURIComponent(r.public_id)}`,
-        { method: "DELETE" }
-      );
+    for (const f of files) {
+      const res = await fetch(`/api/storage?source=drive&fileId=${encodeURIComponent(f.id)}`, { method: "DELETE" });
       if (!res.ok) { ok = false; break; }
     }
     setBusy(false);
@@ -109,23 +113,20 @@ export default function StoragePage() {
   }
 
   async function downloadAll() {
-    if (resources.length === 0) return;
+    if (files.length === 0) return;
     setBusy(true);
     try {
       const zip = new JSZip();
-      for (let i = 0; i < resources.length; i++) {
-        const r = resources[i];
-        const blob: Blob = await (await fetch(r.secure_url)).blob();
-        const ext = r.format || "file";
-        const dir = r.public_id.includes("/") ? r.public_id.split("/")[0] : "files";
-        const name = r.public_id.split("/").pop() || `file-${i + 1}`;
-        zip.file(`${dir}/${name}.${ext}`, blob);
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const blob: Blob = await (await fetch(f.url + "&export=download")).blob();
+        zip.file(f.name, blob);
       }
       const content = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(content);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "cloudinary-files.zip";
+      a.download = "google-drive-files.zip";
       a.click();
       URL.revokeObjectURL(url);
       showMsg("Zip downloaded.");
@@ -150,10 +151,15 @@ export default function StoragePage() {
         </div>
 
         <h1 className="text-3xl font-bold text-white mb-2">Storage</h1>
-        <p className="text-blue-200/60 mb-8">Supabase tables and Cloudinary file storage usage</p>
+        <p className="text-blue-200/60 mb-8">Supabase tables and Google Drive file storage usage</p>
 
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
+        {driveConfigured === false && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm rounded-lg px-4 py-3 mb-6">
+            Google Drive is not configured yet. Ask your developer to add the service account key and folder ID.
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
@@ -197,42 +203,42 @@ export default function StoragePage() {
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">Cloudinary</h2>
-                  <p className="text-xs text-blue-200/60 mt-1">{resources.length} file(s) listed</p>
+                  <h2 className="text-lg font-semibold text-white">Google Drive</h2>
+                  <p className="text-xs text-blue-200/60 mt-1">{files.length} file(s) listed</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={fetchAll} disabled={busy} className={`${btnCls} bg-white/10 hover:bg-white/20`}>Refresh</button>
-                  <button onClick={downloadAll} disabled={busy || resources.length === 0} className={`${btnCls} bg-green-600 hover:bg-green-500`}>{busy ? "..." : "Download ZIP"}</button>
-                  <button onClick={deleteAll} disabled={busy || resources.length === 0} className={`${btnCls} bg-red-600 hover:bg-red-500`}>Delete All</button>
+                  <button onClick={downloadAll} disabled={busy || files.length === 0} className={`${btnCls} bg-green-600 hover:bg-green-500`}>{busy ? "..." : "Download ZIP"}</button>
+                  <button onClick={deleteAll} disabled={busy || files.length === 0} className={`${btnCls} bg-red-600 hover:bg-red-500`}>Delete All</button>
                 </div>
               </div>
 
               <div className="px-6 py-4 border-b border-white/10">
                 <div className="flex items-center justify-between text-sm mb-2">
                   <span className="text-white/80">Storage used</span>
-                  <span className="text-blue-200/60 text-xs">{fmtBytes(cBytes)} of {fmtBytes(cLimit)} · {cPct.toFixed(2)}%</span>
+                  <span className="text-blue-200/60 text-xs">{fmtBytes(dBytes)} in folder · {fmtBytes(dQuota)} of {fmtBytes(dLimit)} Drive quota · {dPct.toFixed(2)}%</span>
                 </div>
                 <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${cPct > 80 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${Math.min(Math.max(cPct, 0.5), 100)}%` }} />
+                  <div className={`h-full rounded-full ${dPct > 80 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${Math.min(Math.max(dPct, 0.5), 100)}%` }} />
                 </div>
               </div>
 
               <div className="max-h-[420px] overflow-y-auto">
-                {resources.length === 0 ? (
-                  <p className="text-blue-200/40 text-center py-10 text-sm">No files stored in Cloudinary yet.</p>
+                {files.length === 0 ? (
+                  <p className="text-blue-200/40 text-center py-10 text-sm">No files stored in the Drive folder yet.</p>
                 ) : (
                   <div className="divide-y divide-white/5">
-                    {resources.map((r) => (
-                      <div key={r.public_id} className="px-6 py-3 flex items-center justify-between gap-3">
+                    {files.map((f) => (
+                      <div key={f.id} className="px-6 py-3 flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm text-white/80 truncate">{r.public_id}</p>
+                          <p className="text-sm text-white/80 truncate">{f.name}</p>
                           <p className="text-xs text-blue-200/40">
-                            {r.format?.toUpperCase()} · {fmtBytes(r.bytes)} · {fmtDate(r.created_at)} · {r.resource_type}
+                            PDF · {fmtBytes(f.bytes)} · {fmtDate(f.created_at)}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <a href={r.secure_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Open</a>
-                          <button onClick={() => deleteResource(r)} disabled={busy} className="text-xs text-red-400 hover:text-red-300">Delete</button>
+                          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Open</a>
+                          <button onClick={() => deleteResource(f)} disabled={busy} className="text-xs text-red-400 hover:text-red-300">Delete</button>
                         </div>
                       </div>
                     ))}

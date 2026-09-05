@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { CLOUDINARY_UPLOAD_URL } from "@/lib/cloudinary";
 
 interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; departments: Department[]; }
@@ -452,42 +451,28 @@ export default function InternalAuditPlan() {
 
       setPdfSaving(true);
       try {
-        const sigRes = await fetch("/api/upload-signature", { method: "POST" });
-        if (!sigRes.ok) {
-          showErr("PDF generated but Cloudinary upload is not authorized.");
-          return;
-        }
-        const sig = await sigRes.json();
-        if (!sig.signature) {
-          showErr("PDF generated but Cloudinary upload failed (signature).");
-          return;
-        }
         const blob = doc.output("blob");
         const formData = new FormData();
         formData.append("file", blob, `${sanitizeFile(plan.branch_name || "Internal")}_Audit_Plan.pdf`);
-        formData.append("api_key", sig.api_key);
-        formData.append("timestamp", sig.timestamp);
-        formData.append("signature", sig.signature);
-        formData.append("folder", sig.folder);
-        const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
+        const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
         if (res.ok) {
           const json = await res.json();
-          if (json.secure_url) {
+          if (json.url) {
             const { error: updErr } = await supabase
               .from("internal_audits")
-              .update({ pdf_url: json.secure_url, pdf_public_id: json.public_id || null, updated_at: new Date().toISOString() })
+              .update({ pdf_url: json.url, pdf_public_id: json.fileId || null, updated_at: new Date().toISOString() })
               .eq("id", plan.id);
             if (!updErr) {
-              showMsg("PDF generated and saved to Cloudinary.");
+              showMsg("PDF generated and saved to Google Drive.");
               fetchData();
             }
           }
         } else {
           const errJson = await res.json().catch(() => ({}));
-          showErr(errJson?.error?.message || "PDF generated but Cloudinary upload failed.");
+          showErr(errJson?.error?.message || "PDF generated but upload failed.");
         }
       } catch {
-        showErr("PDF generated but Cloudinary upload failed.");
+        showErr("PDF generated but upload failed.");
       } finally {
         setPdfSaving(false);
       }
@@ -730,7 +715,7 @@ export default function InternalAuditPlan() {
               <h2 className="text-xl font-bold text-white">Audit Plan Document</h2>
               <div className="flex gap-2">
                 <button onClick={() => generatePdf(viewPlan)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                  {downloadingPdf ? (pdfSaving ? "Saving to Cloudinary..." : "Generating...") : "Save to Cloudinary"}
+                  {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : "Save to Google Drive"}
                 </button>
                 {viewPlan.pdf_url && (
                   <a href={viewPlan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
