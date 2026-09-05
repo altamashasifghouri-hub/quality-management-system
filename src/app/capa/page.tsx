@@ -321,7 +321,7 @@ export default function CapaPage() {
       (splitLines(finding.detail).length ? splitLines(finding.detail) : [finding.detail]).forEach(bullet);
 
       sectionTitle("2. Auditor's Observation (How Observed)");
-      const obs = finding.observation || finding.detail;
+      const obs = finding.observation ?? finding.detail;
       (splitLines(obs).length ? splitLines(obs) : [obs]).forEach(bullet);
 
       sectionTitle("3. Root Cause Analysis");
@@ -480,7 +480,7 @@ export default function CapaPage() {
                                 <div className="space-y-4">
                                   <div>
                                     <span className="block text-xs text-blue-200/60 mb-1">Auditor's Observation (how observed)</span>
-                                    <textarea rows={2} value={f.observation || f.detail} onChange={(e) => patchFinding(plan.id, idx, { observation: e.target.value })} className={inputCls} />
+                                    <textarea rows={2} value={f.observation ?? ""} onChange={(e) => patchFinding(plan.id, idx, { observation: e.target.value })} className={inputCls} />
                                   </div>
                                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>

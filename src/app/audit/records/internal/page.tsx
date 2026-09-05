@@ -54,7 +54,7 @@ export default function InternalRecords() {
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
-  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -195,10 +195,10 @@ export default function InternalRecords() {
       if (!res.ok) return showErr(json?.error || "Generation failed. Try again.");
       const incoming: Finding[] = json.findings || [];
       const current: Finding[] = sessionPlan.findings || [];
-      const existingKey = new Set(current.map((f) => `${f.department.toLowerCase()}|${f.detail.trim().toLowerCase()}`));
+      const existingKey = new Set(current.map((f) => `${(f.department || "").toLowerCase()}|${(f.detail || "").trim().toLowerCase()}`));
       const merged = [...current];
       incoming.forEach((f) => {
-        const key = `${f.department.toLowerCase()}|${f.detail.trim().toLowerCase()}`;
+        const key = `${(f.department || "").toLowerCase()}|${(f.detail || "").trim().toLowerCase()}`;
         if (!existingKey.has(key)) { merged.push({ department: f.department, type: f.type, detail: f.detail, recommendation: f.recommendation, evidence: [], resolved: false }); existingKey.add(key); }
       });
       const { error: updErr } = await supabase.from("internal_audits").update({ findings: merged, updated_at: new Date().toISOString() }).eq("id", sessionPlan.id);

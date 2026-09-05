@@ -21,6 +21,11 @@ const BRANCH_COLORS = ["bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-purp
 function getDaysInMonth(year: number, month: number) { return new Date(year, month + 1, 0).getDate(); }
 function getFirstDayOfMonth(year: number, month: number) { return new Date(year, month, 1).getDay(); }
 function toDateStr(y: number, m: number, d: number) { return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+function parseLocalDate(s: string) {
+  const [y, m, d] = (s || "").split("-").map(Number);
+  if (!y || !m || !d) return new Date(NaN);
+  return new Date(y, m - 1, d);
+}
 
 export default function AuditSchedulePage() {
   const supabase = createClient();
@@ -77,8 +82,9 @@ export default function AuditSchedulePage() {
   const schedulesByDate = useMemo(() => {
     const map: Record<string, AuditSchedule[]> = {};
     schedules.forEach((s) => {
-      const from = new Date(s.date_from);
-      const to = new Date(s.date_to);
+      const from = parseLocalDate(s.date_from);
+      const to = parseLocalDate(s.date_to);
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) return;
       for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
         const key = toDateStr(d.getFullYear(), d.getMonth(), d.getDate());
         if (!map[key]) map[key] = [];
@@ -131,9 +137,14 @@ export default function AuditSchedulePage() {
   }
 
   async function handleDeleteSchedule(id: string) {
+    if (!confirm("Delete this schedule and its linked plan (if any)?")) return;
+    const delIso = await supabase.from("audit_plans").delete().eq("schedule_id", id);
+    if (delIso.error) return showErr(delIso.error.message);
+    const delInt = await supabase.from("internal_audits").delete().eq("schedule_id", id);
+    if (delInt.error) return showErr(delInt.error.message);
     const { error } = await supabase.from("audit_schedules").delete().eq("id", id);
     if (error) return showErr(error.message);
-    showMsg("Schedule deleted.");
+    showMsg("Schedule and linked plans deleted.");
     fetchData();
   }
 

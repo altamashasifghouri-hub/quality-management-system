@@ -83,6 +83,11 @@ export default function AuditFindings() {
     ]);
     const branchName = new Map<string, string>((b || []).map((r: any) => [r.id, r.name]));
     const isoBranch = new Map<string, string>((schedData || []).map((sc: any) => [sc.id, branchName.get(sc.branch_id) || ""]));
+    const isoPeriod = new Map<string, string | null>((schedData || []).map((sc: any) => {
+      if (sc.date_from && sc.date_to) return [sc.id, `${sc.date_from} to ${sc.date_to}`];
+      return [sc.id, null];
+    }));
+    const isoDate = new Map<string, string | null>((schedData || []).map((sc: any) => [sc.id, sc.date_to || null]));
     const intPlans: AuditPlan[] = (p || []).map((r: any) => ({
       id: r.id, title: r.title, branch_id: r.branch_id, branch_name: branchName.get(r.branch_id) || "Unassigned",
       document_number: r.document_number, created_at: r.created_at, date_of_plan: r.date_of_plan,
@@ -90,8 +95,10 @@ export default function AuditFindings() {
     }));
     const isoArr: AuditPlan[] = (isoPlans || []).map((r: any) => ({
       id: r.id, title: r.title, branch_id: r.branch_id, branch_name: isoBranch.get(r.schedule_id) || "Unassigned",
-      document_number: r.document_number, created_at: r.created_at, date_of_plan: r.date_of_plan,
-      audit_period: r.audit_period, findings: r.findings || [], source: "iso",
+      document_number: r.document_number, created_at: r.created_at,
+      date_of_plan: r.date_of_plan || isoDate.get(r.schedule_id) || null,
+      audit_period: r.audit_period || isoPeriod.get(r.schedule_id) || null,
+      findings: r.findings || [], source: "iso",
     }));
     setPlans([...intPlans, ...isoArr].sort((a, z) => (z.created_at || "").localeCompare(a.created_at || "")));
     setLoading(false);

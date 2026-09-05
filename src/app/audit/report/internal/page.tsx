@@ -93,7 +93,8 @@ const DEFAULT_OBJECTIVES = [
 ];
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function sanitizeFile(name: string) {
@@ -295,18 +296,17 @@ export default function InternalAuditReport() {
       savedId = data?.id || null;
     }
     setSaving(false);
-    setShowForm(false); setEditingReportId(null); setForm(emptyForm());
+    setShowForm(false); setEditingReportId(null);
 
     if (savedId) {
-      const alreadySaved = reports.find((r) => r.id === savedId);
-      if (!alreadySaved?.pdf_url) {
-        fetchData();
-        setTimeout(() => { generatePdf(formAsReport(savedId)).then(() => { if (savedId) setViewingReportId(savedId); }); }, 500);
-      } else {
-        showMsg(editingReportId ? "Report updated." : "Report created.");
-        fetchData();
-        setTimeout(() => setViewingReportId(savedId), 300);
-      }
+      const reportToView = formAsReport(savedId);
+      setForm(emptyForm());
+      showMsg(editingReportId ? "Report updated." : "Report created.");
+      await fetchData();
+      setViewingReportId(savedId);
+      generatePdf(reportToView).catch(() => {});
+    } else {
+      setForm(emptyForm());
     }
   }
 
@@ -364,10 +364,6 @@ export default function InternalAuditReport() {
   }
 
   async function generatePdf(report: AuditReport) {
-    if (report.pdf_url) {
-      showMsg("PDF already saved to Google Drive — open it from the preview.");
-      return;
-    }
     setDownloadingPdf(true);
     setError("");
     try {

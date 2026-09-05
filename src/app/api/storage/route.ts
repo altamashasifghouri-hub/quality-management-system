@@ -38,19 +38,25 @@ async function driveAbout(token: string) {
 
 export async function GET(req: Request) {
   const supabase = await supabaseFromCookies();
+  const { searchParams } = new URL(req.url);
+  const source = searchParams.get("source");
+
+  if (source === "supabase") {
+    try {
+      const tables = await supabaseTables();
+      return NextResponse.json({ tables });
+    } catch (e: any) {
+      return NextResponse.json({ error: e?.message || "Storage query failed" }, { status: 500 });
+    }
+  }
+
   const tokenResult = await getGoogleAccessToken(supabase);
   if (!tokenResult.connected) {
     return NextResponse.json({ connected: false }, { status: tokenResult.error === "Unauthorized" ? 401 : 200 });
   }
   const token = tokenResult.token;
 
-  const { searchParams } = new URL(req.url);
-  const source = searchParams.get("source");
   try {
-    if (source === "supabase") {
-      const tables = await supabaseTables();
-      return NextResponse.json({ tables });
-    }
     if (source === "drive") {
       const [plan, report, capa, about] = await Promise.all([
         driveListing(token, "plan"),

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { supabaseFromCookies } from "@/lib/google-oauth";
 
 const SEVERITIES = ["Critical", "High", "Medium", "Low"];
 const MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-lite-latest"];
@@ -67,6 +68,10 @@ function heuristicFindings(notes: string, departments: string[], clauses: string
 }
 
 export async function POST(req: Request) {
+  const supabase = await supabaseFromCookies();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   let notes = "";
   let departments: string[] = [];
   let clauses: string[] = [];
@@ -83,10 +88,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
   if (!notes) return NextResponse.json({ error: "Notepad is empty." }, { status: 400 });
-  if (departments.length === 0 && clauses.length === 0) {
-    if (!departments.length && clauses.length > 0) departments = ["General"];
-    else return NextResponse.json({ error: "No departments selected on the audit plan." }, { status: 400 });
-  }
   if (departments.length === 0) departments = ["General"];
 
   const apiKey = process.env.GEMINI_API_KEY;

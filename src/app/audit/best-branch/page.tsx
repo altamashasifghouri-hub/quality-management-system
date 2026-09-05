@@ -36,28 +36,36 @@ export default function BestBranch() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError("");
-    const [{ data: b }, { data: p }] = await Promise.all([
+    const [{ data: b }, { data: p }, { data: iso }, { data: sched }] = await Promise.all([
       supabase.from("branches").select("id, name").order("created_at", { ascending: true }),
       supabase.from("internal_audits").select("branch_id, created_at, findings"),
+      supabase.from("audit_plans").select("schedule_id, created_at, findings"),
+      supabase.from("audit_schedules").select("id, branch_id"),
     ]);
     const branchDefs = (b || []) as { id: string; name: string }[];
     const byBranch = new Map<string, BranchStat>();
     branchDefs.forEach((br) => byBranch.set(br.id, { id: br.id, name: br.name, audits: 0, findings: 0, resolved: 0, unresolved: 0, pct: null }));
 
-    (p || []).forEach((plan: any) => {
-      const created = (plan.created_at || "").toString().slice(0, 10);
+    const schedBranch = new Map<string, string>(
+      (sched || []).map((sc: any) => [sc.id, sc.branch_id])
+    );
+
+    const contribute = (branchId: string | undefined, createdAt: string | null | undefined, findingsArr: Finding[] | undefined) => {
+      if (!findingsArr || !findingsArr.length) return;
+      const created = (createdAt || "").toString().slice(0, 10);
       if (!created || created < from || created > to) return;
-      const findings: Finding[] = plan.findings || [];
-      if (!findings.length) return;
-      const stat = byBranch.get(plan.branch_id);
+      const stat = branchId ? byBranch.get(branchId) : undefined;
       if (!stat) return;
       stat.audits += 1;
-      const resolved = findings.filter((f) => f.resolved === true).length;
-      stat.findings += findings.length;
+      const resolved = findingsArr.filter((f) => f.resolved === true).length;
+      stat.findings += findingsArr.length;
       stat.resolved += resolved;
-      stat.unresolved += findings.length - resolved;
+      stat.unresolved += findingsArr.length - resolved;
       stat.pct = Math.round((stat.resolved / stat.findings) * 100);
-    });
+    };
+
+    (p || []).forEach((plan: any) => contribute(plan.branch_id, plan.created_at, plan.findings));
+    (iso || []).forEach((plan: any) => contribute(schedBranch.get(plan.schedule_id), plan.created_at, plan.findings));
 
     const ranked = Array.from(byBranch.values())
       .sort((a, z) => {
