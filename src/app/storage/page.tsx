@@ -38,6 +38,7 @@ export default function StoragePage() {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [driveInfo, setDriveInfo] = useState<{ storageBytes: number; storageLimit: number; quotaUsage: number } | null>(null);
   const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
+  const [connected, setConnected] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -57,13 +58,19 @@ export default function StoragePage() {
       else showErr("Could not load Supabase tables.");
       if (dRes.ok) {
         const json = await dRes.json();
-        setDriveInfo({
-          storageBytes: json.storageBytes || 0,
-          storageLimit: json.storageLimit || 0,
-          quotaUsage: json.quotaUsage || 0,
-        });
-        setFiles(json.files || []);
-        setDriveConfigured(true);
+        if (json.connected === false) {
+          setConnected(false);
+          setDriveConfigured(true);
+        } else {
+          setConnected(true);
+          setDriveConfigured(true);
+          setDriveInfo({
+            storageBytes: json.storageBytes || 0,
+            storageLimit: json.storageLimit || 0,
+            quotaUsage: json.quotaUsage || 0,
+          });
+          setFiles(json.files || []);
+        }
       } else {
         const body = await dRes.json().catch(() => ({}));
         if (body?.error?.includes("not configured") || body?.error?.includes("Drive")) {
@@ -87,6 +94,17 @@ export default function StoragePage() {
   const dLimit = driveInfo?.storageLimit || 0;
   const dQuota = driveInfo?.quotaUsage || 0;
   const dPct = dLimit ? (dQuota / dLimit) * 100 : 0;
+
+  async function disconnect() {
+    if (!confirm("Disconnect Google Drive? Saved files stay in Drive.")) return;
+    setBusy(true);
+    const res = await fetch("/api/google-drive/disconnect", { method: "POST" });
+    setBusy(false);
+    if (!res.ok) return showErr("Could not disconnect.");
+    setConnected(null);
+    setFiles([]);
+    showMsg("Disconnected.");
+  }
 
   async function deleteResource(f: DriveFile) {
     if (!confirm(`Delete "${f.name}"?`)) return;
@@ -119,7 +137,7 @@ export default function StoragePage() {
       const zip = new JSZip();
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
-        const blob: Blob = await (await fetch(f.url + "&export=download")).blob();
+        const blob: Blob = await (await fetch(`https://drive.google.com/uc?export=download&id=${f.id}`)).blob();
         zip.file(f.name, blob);
       }
       const content = await zip.generateAsync({ type: "blob" });
@@ -155,9 +173,20 @@ export default function StoragePage() {
 
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
+        {connected === false && driveConfigured && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm rounded-lg px-4 py-3 mb-6 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-yellow-200">Google Drive is not connected</p>
+              <p className="text-yellow-300/60 mt-1">Connect your Google account to store audit plan PDFs in your Drive folders.</p>
+            </div>
+            <a href="/api/google-drive/auth" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium shrink-0">
+              Connect Google Drive
+            </a>
+          </div>
+        )}
         {driveConfigured === false && (
           <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm rounded-lg px-4 py-3 mb-6">
-            Google Drive is not configured yet. Ask your developer to add the service account key and folder ID.
+            Google Drive is not configured yet.
           </div>
         )}
 
@@ -204,9 +233,12 @@ export default function StoragePage() {
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Google Drive</h2>
-                  <p className="text-xs text-blue-200/60 mt-1">{files.length} file(s) listed</p>
+                  <p className="text-xs text-blue-200/60 mt-1">{connected ? `${files.length} file(s) listed` : "Connect to view files"}</p>
                 </div>
                 <div className="flex gap-2">
+                  {connected && (
+                    <button onClick={disconnect} disabled={busy} className={`${btnCls} bg-white/10 hover:bg-white/20`}>Disconnect</button>
+                  )}
                   <button onClick={fetchAll} disabled={busy} className={`${btnCls} bg-white/10 hover:bg-white/20`}>Refresh</button>
                   <button onClick={downloadAll} disabled={busy || files.length === 0} className={`${btnCls} bg-green-600 hover:bg-green-500`}>{busy ? "..." : "Download ZIP"}</button>
                   <button onClick={deleteAll} disabled={busy || files.length === 0} className={`${btnCls} bg-red-600 hover:bg-red-500`}>Delete All</button>

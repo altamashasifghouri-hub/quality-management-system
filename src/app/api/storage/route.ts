@@ -1,27 +1,8 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { driveAccessToken, driveFolderId } from "@/lib/drive";
+import { getGoogleAccessToken, supabaseFromCookies } from "@/lib/google-oauth";
+import { driveFolderId, driveListing } from "@/lib/drive";
 
 const MANAGEMENT_URL = "https://api.supabase.com/v1/projects/drmuaoxfkomjeqvbnexx/database/query";
-
-async function requireUser() {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {},
-      },
-    }
-  );
-  const { data } = await supabase.auth.getUser();
-  return data?.user ?? null;
-}
 
 async function supabaseTables() {
   const sql = `SELECT c.relname AS table_name,
@@ -43,44 +24,25 @@ async function supabaseTables() {
   });
   if (!res.ok) throw new Error(`Supabase query failed: ${res.status} ${await res.text()}`);
   const json = await res.json();
-  const rows = json.value || [];
-  return rows;
+  return json.value || [];
 }
 
-async function driveFiles(kind: string) {
-  const folderId = driveFolderId(kind);
-  if (!folderId) throw new Error("Google Drive folder is not configured.");
-  const token = await driveAccessToken();
-  const query = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+async function driveAbout(token: string) {
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,size,mimeType,createdTime,webViewLink,webContentLink)&orderBy=createdTime%20desc&pageSize=1000`,
+    `https://www.googleapis.com/drive/v3/about?fields=storageQuota(limit,usage)`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  if (!res.ok) throw new Error(`Drive files failed: ${res.status} ${await res.text()}`);
-  const json = await res.json();
-  return (json.files || []).map((f: any) => ({
-    id: f.id,
-    name: f.name,
-    bytes: Number(f.size || 0),
-    mimeType: f.mimeType,
-    created_at: f.createdTime,
-    url: f.webViewLink || f.webContentLink || "",
-  }));
-}
-
-async function driveAbout() {
-  const token = await driveAccessToken();
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/about?fields=storageQuota(limit,usage),user(displayName)`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok) throw new Error(`Drive about failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) return null;
   return res.json();
 }
 
 export async function GET(req: Request) {
-  const user = await requireUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await supabaseFromCookies();
+  const tokenResult = await getGoogleAccessToken(supabase);
+  if (!tokenResult.connected) {
+    return NextResponse.json({ connected: false }, { status: tokenResult.error === "Unauthorized" ? 401 : 200 });
+  }
+  const token = tokenResult.token;
 
   const { searchParams } = new URL(req.url);
   const source = searchParams.get("source");
@@ -91,9 +53,10 @@ export async function GET(req: Request) {
     }
     if (source === "drive") {
       const kind = searchParams.get("folder") === "report" ? "report" : "plan";
-      const [files, about] = await Promise.all([driveFiles(kind), driveAbout().catch(() => null)]);
+      const [files, about] = await Promise.all([driveListing(token, kind), driveAbout(token)]);
       const bytes = files.reduce((sum: number, f: any) => sum + (f.bytes || 0), 0);
       return NextResponse.json({
+        connected: true,
         files,
         storageBytes: bytes,
         storageLimit: Number(about?.storageQuota?.limit || 0),
@@ -107,8 +70,12 @@ export async function GET(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const user = await requireUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await supabaseFromCookies();
+  const tokenResult = await getGoogleAccessToken(supabase);
+  if (!tokenResult.connected) {
+    return NextResponse.json({ error: "Not connected to Google Drive" }, { status: 401 });
+  }
+  const token = tokenResult.token;
 
   const { searchParams } = new URL(req.url);
   const source = searchParams.get("source");
@@ -117,7 +84,6 @@ export async function DELETE(req: Request) {
   if (!fileId) return NextResponse.json({ error: "Missing fileId" }, { status: 400 });
 
   try {
-    const token = await driveAccessToken();
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },

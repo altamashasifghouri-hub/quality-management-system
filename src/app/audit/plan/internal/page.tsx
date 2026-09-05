@@ -469,7 +469,11 @@ export default function InternalAuditPlan() {
           }
         } else {
           const errJson = await res.json().catch(() => ({}));
-          showErr(errJson?.error?.message || "PDF generated but upload failed.");
+          if (errJson?.error === "not_connected") {
+            showErr("Connect Google Drive first from the Storage page.");
+          } else {
+            showErr(errJson?.error?.message || "PDF generated but upload failed.");
+          }
         }
       } catch {
         showErr("PDF generated but upload failed.");

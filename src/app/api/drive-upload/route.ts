@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { driveAccessToken, driveFolderId } from "@/lib/drive";
+import { getGoogleAccessToken, supabaseFromCookies } from "@/lib/google-oauth";
+import { driveFolderId } from "@/lib/drive";
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {},
-      },
-    }
-  );
-  const { data } = await supabase.auth.getUser();
-  if (!data?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const supabase = await supabaseFromCookies();
+  const tokenResult = await getGoogleAccessToken(supabase);
+  if (!tokenResult.connected) {
+    const status = tokenResult.error === "Unauthorized" ? 401 : 403;
+    return NextResponse.json({ error: tokenResult.error === "not_connected" ? "not_connected" : "Unauthorized" }, { status });
+  }
+  const token = tokenResult.token;
 
   try {
     const form = await req.formData();
@@ -30,8 +21,6 @@ export async function POST(req: Request) {
 
     const folderId = driveFolderId(kind);
     if (!folderId) return NextResponse.json({ error: "Google Drive folder is not configured." }, { status: 500 });
-
-    const token = await driveAccessToken();
 
     const boundary = `qms-${Date.now().toString(36)}`;
     const meta = JSON.stringify({ name, parents: [folderId] });
