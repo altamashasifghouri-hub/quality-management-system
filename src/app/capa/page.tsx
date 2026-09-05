@@ -79,6 +79,29 @@ function genNcrNumber(branchName: string, existingNcrs: string[]) {
 
 const imageCache = new Map<string, string>();
 
+function jpegEncode(dataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("no canvas context"));
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/jpeg", 0.92));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => reject(new Error("image decode failed"));
+    img.src = dataUrl;
+  });
+}
+
 async function assetToDataUrl(url: string): Promise<string> {
   if (!url) return "";
   const cached = imageCache.get(url);
@@ -98,18 +121,18 @@ async function assetToDataUrl(url: string): Promise<string> {
         reader.readAsDataURL(blob);
       });
     }
-    imageCache.set(url, dataUrl);
+    const jpeg = await jpegEncode(dataUrl);
+    if (jpeg) imageCache.set(url, jpeg);
+    return jpeg;
   } catch {
-    dataUrl = "";
+    return "";
   }
-  return dataUrl;
 }
 
 function embedImage(doc: jsPDF, dataUrl: string, x: number, y: number, w: number, h: number) {
   if (!dataUrl) return;
-  const format = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
   try {
-    doc.addImage(dataUrl, format, x, y, w, h);
+    doc.addImage(dataUrl, "JPEG", x, y, w, h);
   } catch {
     /* image embedding unavailable */
   }
