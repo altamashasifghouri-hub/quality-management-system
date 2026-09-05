@@ -115,9 +115,24 @@ export default function BranchesPage() {
   }
 
   async function handleDeleteBranch(id: string) {
+    const schedIds = (await supabase.from("audit_schedules").select("id").eq("branch_id", id)).data?.map((s) => s.id as string) || [];
+    const intIds = (await supabase.from("internal_audits").select("id").eq("branch_id", id)).data?.map((p) => p.id as string) || [];
+
+    if (intIds.length) {
+      await supabase.from("audit_sessions").delete().in("plan_id", intIds);
+      await supabase.from("audit_reports").delete().or(`branch_id.eq.${id},audit_id.in.(${intIds.join(",")})`);
+    } else {
+      await supabase.from("audit_reports").delete().eq("branch_id", id);
+    }
+    if (intIds.length) await supabase.from("internal_audits").delete().in("id", intIds);
+    if (schedIds.length) {
+      await supabase.from("audit_plans").delete().in("schedule_id", schedIds);
+      await supabase.from("audit_schedules").delete().in("id", schedIds);
+    }
+    await supabase.from("departments").delete().eq("branch_id", id);
     const { error } = await supabase.from("branches").delete().eq("id", id);
     if (error) return showErr(error.message);
-    showMsg("Branch deleted.");
+    showMsg("Branch deleted along with its departments, schedules, and audits.");
     fetchBranches();
   }
 

@@ -57,8 +57,7 @@ export default function Settings() {
     setMessage("");
     const { error } = await supabase
       .from("settings")
-      .update({ hr_name: hrName.trim(), ceo_name: ceoName.trim(), updated_at: new Date().toISOString() })
-      .eq("id", 1);
+      .upsert({ id: 1, hr_name: hrName.trim(), ceo_name: ceoName.trim(), updated_at: new Date().toISOString() }, { onConflict: "id" });
     setCompanySaving(false);
     if (error) return setError(error.message);
     setMessage("Company settings saved.");

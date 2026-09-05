@@ -187,7 +187,7 @@ export default function InternalAuditPlan() {
 
   function onBranchChange(id: string) {
     const branch = branches.find((b) => b.id === id);
-    const docNumber = !form.document_number && branch ? genDocNumber(branch.name, plans.length) : form.document_number;
+    const docNumber = branch ? genDocNumber(branch.name, plans.length) : "";
     setF({
       branch_id: id, schedule_id: "", departments: [], document_number: docNumber,
       purpose: branch
@@ -234,6 +234,7 @@ export default function InternalAuditPlan() {
     }));
 
     setSaving(true);
+    const existingPlan = editingPlan ? plans.find((p) => p.id === editingPlan) : undefined;
     const payload = {
       title: form.title.trim(), document_number: form.document_number.trim() || null,
       branch_id: form.branch_id, schedule_id: form.schedule_id,
@@ -243,7 +244,7 @@ export default function InternalAuditPlan() {
       purpose: form.purpose.trim() || null, period_covered: form.period_covered.trim() || null,
       locations_covered: form.locations_covered.trim() || null, exclusions: form.exclusions.trim() || null,
       approach: form.approach, program, signature: form.signature || null,
-      findings: [], status: "Draft",
+      findings: existingPlan?.findings || [], status: existingPlan?.status || "Draft",
     };
     let errRes = null as { message?: string } | null;
     if (editingPlan) {

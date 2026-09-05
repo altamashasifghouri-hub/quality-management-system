@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({ role: "reader", type: "anyone" }),
     }).catch(() => {});
 
-    return NextResponse.json({ url: json.webViewLink || json.webContentLink || "", fileId });
+    return NextResponse.json({ url: json.id ? `https://drive.google.com/thumbnail?id=${json.id}&sz=w400` : (json.webContentLink || json.webViewLink || ""), fileId });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Upload failed" }, { status: 500 });
   }

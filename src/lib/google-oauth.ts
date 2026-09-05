@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://qualityms.vercel.app";
@@ -73,7 +73,15 @@ export async function supabaseFromCookies() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll() {},
+        setAll(cookiesList: { name: string; value: string; options?: CookieOptions }[]) {
+          try {
+            cookiesList.forEach(({ name, value, options }) =>
+              (cookieStore as unknown as { set: (n: string, v: string, o?: any) => void }).set(name, value, options)
+            );
+          } catch {
+            // cookies() is read-only outside route handlers/actions; refresh still works in-memory
+          }
+        },
       },
     }
   );
@@ -98,7 +106,7 @@ export async function getGoogleAccessToken(supabase: any) {
   const refreshed = await refreshAccessToken(row.refresh_token);
   if (!refreshed?.access_token) return { connected: false as const, error: "refresh_failed" as const };
 
-  await supabase
+  const { error: updErr } = await supabase
     .from("google_oauth")
     .update({
       access_token: refreshed.access_token,
@@ -106,5 +114,6 @@ export async function getGoogleAccessToken(supabase: any) {
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", user.id);
+  if (updErr) return { connected: false as const, error: "update_failed" as const };
   return { connected: true as const, token: refreshed.access_token as string };
 }

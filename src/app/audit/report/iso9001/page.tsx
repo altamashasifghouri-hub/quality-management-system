@@ -48,8 +48,9 @@ const ISO_CLAUSES = [
     "9.3 Management review",
   ]},
   { clause: "10", title: "Improvement", items: [
-    "10.1 Nonconformity and corrective action",
-    "10.2 Continual improvement",
+    "10.1 General",
+    "10.2 Nonconformity and corrective action",
+    "10.3 Continual improvement",
   ]},
 ];
 

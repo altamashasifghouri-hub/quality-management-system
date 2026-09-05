@@ -101,22 +101,32 @@ export default function StoragePage() {
   async function disconnect() {
     if (!confirm("Disconnect Google Drive? Saved files stay in Drive.")) return;
     setBusy(true);
-    const res = await fetch("/api/google-drive/disconnect", { method: "POST" });
-    setBusy(false);
-    if (!res.ok) return showErr("Could not disconnect.");
-    setConnected(null);
-    setFolders({ plan: [], report: [], capa: [] });
-    showMsg("Disconnected.");
+    try {
+      const res = await fetch("/api/google-drive/disconnect", { method: "POST" });
+      if (!res.ok) return showErr("Could not disconnect.");
+      setConnected(null);
+      setFolders({ plan: [], report: [], capa: [] });
+      showMsg("Disconnected.");
+    } catch {
+      showErr("Could not disconnect.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deleteResource(f: DriveFile) {
     if (!confirm(`Delete "${f.name}"?`)) return;
     setBusy(true);
-    const res = await fetch(`/api/storage?source=drive&fileId=${encodeURIComponent(f.id)}`, { method: "DELETE" });
-    setBusy(false);
-    if (!res.ok) return showErr((await res.json()).error || "Delete failed.");
-    showMsg("Deleted.");
-    fetchAll();
+    try {
+      const res = await fetch(`/api/storage?source=drive&fileId=${encodeURIComponent(f.id)}`, { method: "DELETE" });
+      if (!res.ok) return showErr((await res.json()).error || "Delete failed.");
+      showMsg("Deleted.");
+      fetchAll();
+    } catch {
+      showErr("Delete failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deleteAll() {
@@ -124,13 +134,18 @@ export default function StoragePage() {
     if (!confirm(`Delete all ${files.length} file(s)?`)) return;
     setBusy(true);
     let ok = true;
-    for (const f of files) {
-      const res = await fetch(`/api/storage?source=drive&fileId=${encodeURIComponent(f.id)}`, { method: "DELETE" });
-      if (!res.ok) { ok = false; break; }
+    try {
+      for (const f of files) {
+        const res = await fetch(`/api/storage?source=drive&fileId=${encodeURIComponent(f.id)}`, { method: "DELETE" });
+        if (!res.ok) { ok = false; break; }
+      }
+      showMsg(ok ? "All files deleted." : "Some files could not be deleted.");
+      fetchAll();
+    } catch {
+      showErr("Could not delete files.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
-    showMsg(ok ? "All files deleted." : "Some files could not be deleted.");
-    fetchAll();
   }
 
   async function downloadAll() {
