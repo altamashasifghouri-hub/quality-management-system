@@ -40,7 +40,6 @@ export default function AuditManagement() {
                 </svg>
               </div>
               <h3 className="text-white font-semibold mb-1">Audit Plan</h3>
-              <p className="text-xs text-blue-200/40">Create audit plans by certification standard</p>
             </div>
           </Link>
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 text-center opacity-40 cursor-not-allowed">
@@ -59,7 +58,6 @@ export default function AuditManagement() {
                 </svg>
               </div>
               <h3 className="text-white font-semibold mb-1">Findings</h3>
-              <p className="text-xs text-blue-200/40">Track findings and nonconformities</p>
             </div>
           </Link>
         </div>
