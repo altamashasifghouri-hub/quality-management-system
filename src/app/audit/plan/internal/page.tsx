@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { CLOUDINARY_UPLOAD_URL, CLOUDINARY_UPLOAD_PRESET, CLOUDINARY_UPLOAD_FOLDER } from "@/lib/cloudinary";
 
 interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; departments: Department[]; }
@@ -37,6 +38,8 @@ interface InternalAudit {
   approach: string[];
   program: ProgramRow[];
   signature: string | null;
+  pdf_url: string | null;
+  pdf_public_id: string | null;
 }
 
 interface PlanForm {
@@ -93,6 +96,10 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function sanitizeFile(name: string) {
+  return name.replace(/[^a-zA-Z0-9]+/g, "_");
+}
+
 const emptyForm = (): PlanForm => ({
   title: "", branch_id: "", schedule_id: "", audit_period: "", plan_version: "",
   prepared_by: "", date_of_plan: todayStr(),
@@ -109,6 +116,7 @@ export default function InternalAuditPlan() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pdfSaving, setPdfSaving] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<PlanForm>(emptyForm());
@@ -148,7 +156,7 @@ export default function InternalAuditPlan() {
       date_of_plan: p.date_of_plan,
       purpose: p.purpose, period_covered: p.period_covered, locations_covered: p.locations_covered,
       exclusions: p.exclusions, approach: p.approach || [], program: p.program || [],
-      signature: p.signature,
+      signature: p.signature, pdf_url: p.pdf_url, pdf_public_id: p.pdf_public_id,
     })));
     setLoading(false);
   }, [supabase]);
@@ -432,7 +440,35 @@ export default function InternalAuditPlan() {
       } catch { /* signature image unavailable */ }
 
       doc.save(`${(plan.branch_name || "Internal").replace(/[^a-zA-Z0-9]+/g, "_")}_Audit_Plan.pdf`);
-      showMsg("PDF generated.");
+
+      setPdfSaving(true);
+      try {
+        const blob = doc.output("blob");
+        const formData = new FormData();
+        formData.append("file", blob, `${sanitizeFile(plan.branch_name || "Internal")}_Audit_Plan.pdf`);
+        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+        formData.append("folder", CLOUDINARY_UPLOAD_FOLDER);
+        const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: "POST", body: formData });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.secure_url) {
+            const { error: updErr } = await supabase
+              .from("internal_audits")
+              .update({ pdf_url: json.secure_url, pdf_public_id: json.public_id || null, updated_at: new Date().toISOString() })
+              .eq("id", plan.id);
+            if (!updErr) {
+              showMsg("PDF generated and saved to Cloudinary.");
+              fetchData();
+            }
+          }
+        } else {
+          showErr("PDF generated but Cloudinary upload failed.");
+        }
+      } catch {
+        showErr("PDF generated but Cloudinary upload failed.");
+      } finally {
+        setPdfSaving(false);
+      }
     } catch (e: any) {
       showErr(e?.message || "Could not generate PDF.");
     } finally {
@@ -667,8 +703,13 @@ export default function InternalAuditPlan() {
               <h2 className="text-xl font-bold text-white">Audit Plan Document</h2>
               <div className="flex gap-2">
                 <button onClick={() => generatePdf(viewPlan)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                  {downloadingPdf ? "Generating..." : "Download PDF"}
+                  {downloadingPdf ? (pdfSaving ? "Saving to Cloudinary..." : "Generating...") : "Download PDF"}
                 </button>
+                {viewPlan.pdf_url && (
+                  <a href={viewPlan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
+                    View Saved PDF
+                  </a>
+                )}
                 <button onClick={() => startEdit(viewPlan)} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Edit</button>
                 <button onClick={() => { if (confirm("Delete plan?")) handleDelete(viewPlan.id); }} className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium">Delete</button>
                 <button onClick={() => setViewingPlan(null)} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium">Close</button>
