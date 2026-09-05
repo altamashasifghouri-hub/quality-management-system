@@ -77,6 +77,44 @@ function genNcrNumber(branchName: string, existingNcrs: string[]) {
   return `QMS/NCR/${year}/${code}-${String(maxSeq + 1).padStart(3, "0")}`;
 }
 
+const imageCache = new Map<string, string>();
+
+async function assetToDataUrl(url: string): Promise<string> {
+  if (!url) return "";
+  const cached = imageCache.get(url);
+  if (cached) return cached;
+  let dataUrl = "";
+  try {
+    if (url.startsWith("data:")) {
+      dataUrl = url;
+    } else {
+      const res = await fetch(url);
+      if (!res.ok) return "";
+      const blob = await res.blob();
+      dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("file read failed"));
+        reader.readAsDataURL(blob);
+      });
+    }
+    imageCache.set(url, dataUrl);
+  } catch {
+    dataUrl = "";
+  }
+  return dataUrl;
+}
+
+function embedImage(doc: jsPDF, dataUrl: string, x: number, y: number, w: number, h: number) {
+  if (!dataUrl) return;
+  const format = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+  try {
+    doc.addImage(dataUrl, format, x, y, w, h);
+  } catch {
+    /* image embedding unavailable */
+  }
+}
+
 function loadImageData(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -180,10 +218,8 @@ export default function CapaPage() {
       const maxWidth = pageWidth - margin * 2;
       let y = margin;
 
-      try {
-        const logoUrl = await loadImageData(LOGO);
-        doc.addImage(logoUrl, "PNG", (pageWidth - 40) / 2, y, 40, 28);
-      } catch { /* logo unavailable */ }
+      const logoData = await assetToDataUrl(LOGO);
+      embedImage(doc, logoData, (pageWidth - 40) / 2, y, 40, 28);
       y += 42;
       doc.setFontSize(16); doc.setTextColor(15, 23, 42);
       doc.text("CORRECTIVE ACTION & PREVENTIVE ACTION", pageWidth / 2, y, { align: "center" });
@@ -288,17 +324,12 @@ export default function CapaPage() {
       const authorizeName = settings.ceo_name || settings.hr_name || plan.prepared_by || "Authorized Signatory";
       const sigUrl = plan.signature || SIG_DEFAULT;
       if (y + 48 > 790) { doc.addPage(); y = margin; }
-      let capaLogo = "";
-      try { capaLogo = await loadImageData(LOGO); } catch { /* logo unavailable */ }
-      if (capaLogo) {
-        doc.addImage(capaLogo, "PNG", margin, y + 6, 34, 24);
-      }
+      const capaLogo = await assetToDataUrl(LOGO);
+      embedImage(doc, capaLogo, margin, y + 4, 34, 24);
       doc.setFontSize(10); doc.setTextColor(30, 41, 59);
       doc.text(`Authorized by: ${authorizeName}`, margin, y + 36);
-      try {
-        const dataUrl = await loadImageData(sigUrl);
-        doc.addImage(dataUrl, "PNG", margin + 90, y, 45, 22);
-      } catch { /* signature image unavailable */ }
+      const sigData = await assetToDataUrl(sigUrl);
+      embedImage(doc, sigData, margin + 90, y, 45, 22);
       doc.setDrawColor(30, 41, 59);
       doc.line(margin, y + 41, margin + 55, y + 41);
       doc.setFontSize(8); doc.setTextColor(100, 116, 139);
