@@ -52,12 +52,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ tables });
     }
     if (source === "drive") {
-      const kind = searchParams.get("folder") === "report" ? "report" : "plan";
-      const [files, about] = await Promise.all([driveListing(token, kind), driveAbout(token)]);
-      const bytes = files.reduce((sum: number, f: any) => sum + (f.bytes || 0), 0);
+      const [plan, report, about] = await Promise.all([
+        driveListing(token, "plan"),
+        driveListing(token, "report"),
+        driveAbout(token).catch(() => null),
+      ]);
+      const bytes = [...plan, ...report].reduce((sum: number, f: any) => sum + Number(f.bytes || 0), 0);
       return NextResponse.json({
         connected: true,
-        files,
+        folders: { plan, report },
         storageBytes: bytes,
         storageLimit: Number(about?.storageQuota?.limit || 0),
         quotaUsage: Number(about?.storageQuota?.usage || 0),

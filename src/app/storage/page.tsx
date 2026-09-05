@@ -35,7 +35,8 @@ function fmtDate(s: string) {
 
 export default function StoragePage() {
   const [tables, setTables] = useState<TableInfo[]>([]);
-  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [folders, setFolders] = useState<{ plan: DriveFile[]; report: DriveFile[] }>({ plan: [], report: [] });
+  const [activeType, setActiveType] = useState<"plan" | "report">("plan");
   const [driveInfo, setDriveInfo] = useState<{ storageBytes: number; storageLimit: number; quotaUsage: number } | null>(null);
   const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -69,7 +70,7 @@ export default function StoragePage() {
             storageLimit: json.storageLimit || 0,
             quotaUsage: json.quotaUsage || 0,
           });
-          setFiles(json.files || []);
+          setFolders({ plan: json.folders?.plan || [], report: json.folders?.report || [] });
         }
       } else {
         const body = await dRes.json().catch(() => ({}));
@@ -90,6 +91,8 @@ export default function StoragePage() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const dbBytes = tables.length ? tables[0].db_bytes : 0;
+  const files = folders[activeType];
+  const totalFiles = folders.plan.length + folders.report.length;
   const dBytes = driveInfo?.storageBytes || 0;
   const dLimit = driveInfo?.storageLimit || 0;
   const dQuota = driveInfo?.quotaUsage || 0;
@@ -102,7 +105,7 @@ export default function StoragePage() {
     setBusy(false);
     if (!res.ok) return showErr("Could not disconnect.");
     setConnected(null);
-    setFiles([]);
+    setFolders({ plan: [], report: [] });
     showMsg("Disconnected.");
   }
 
@@ -131,14 +134,18 @@ export default function StoragePage() {
   }
 
   async function downloadAll() {
-    if (files.length === 0) return;
+    const all = [
+      ...folders.plan.map((f) => ({ f, prefix: "Audit Plan" })),
+      ...folders.report.map((f) => ({ f, prefix: "Audit Report" })),
+    ];
+    if (all.length === 0) return;
     setBusy(true);
     try {
       const zip = new JSZip();
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
+      for (let i = 0; i < all.length; i++) {
+        const f = all[i].f;
         const blob: Blob = await (await fetch(`https://drive.google.com/uc?export=download&id=${f.id}`)).blob();
-        zip.file(f.name, blob);
+        zip.file(`${all[i].prefix}/${f.name}`, blob);
       }
       const content = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(content);
@@ -233,7 +240,7 @@ export default function StoragePage() {
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Google Drive</h2>
-                  <p className="text-xs text-blue-200/60 mt-1">{connected ? `${files.length} file(s) listed` : "Connect to view files"}</p>
+                  <p className="text-xs text-blue-200/60 mt-1">{connected ? `${totalFiles} file(s) listed` : "Connect to view files"}</p>
                 </div>
                 <div className="flex gap-2">
                   {connected && (
@@ -248,16 +255,25 @@ export default function StoragePage() {
               <div className="px-6 py-4 border-b border-white/10">
                 <div className="flex items-center justify-between text-sm mb-2">
                   <span className="text-white/80">Storage used</span>
-                  <span className="text-blue-200/60 text-xs">{fmtBytes(dBytes)} in folder · {fmtBytes(dQuota)} of {fmtBytes(dLimit)} Drive quota · {dPct.toFixed(2)}%</span>
+                  <span className="text-blue-200/60 text-xs">{fmtBytes(dBytes)} in folders · {fmtBytes(dQuota)} of {fmtBytes(dLimit)} Drive quota · {dPct.toFixed(2)}%</span>
                 </div>
                 <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${dPct > 80 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${Math.min(Math.max(dPct, 0.5), 100)}%` }} />
                 </div>
               </div>
 
-              <div className="max-h-[420px] overflow-y-auto">
+              <div className="px-6 pt-4 flex gap-2">
+                <button onClick={() => setActiveType("plan")} className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${activeType === "plan" ? "bg-blue-600 text-white" : "bg-white/10 text-blue-200/70 hover:bg-white/15"}`}>
+                  Audit Plan {folders.plan.length ? `(${folders.plan.length})` : ""}
+                </button>
+                <button onClick={() => setActiveType("report")} className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${activeType === "report" ? "bg-blue-600 text-white" : "bg-white/10 text-blue-200/70 hover:bg-white/15"}`}>
+                  Audit Report {folders.report.length ? `(${folders.report.length})` : ""}
+                </button>
+              </div>
+
+              <div className="max-h-[380px] overflow-y-auto">
                 {files.length === 0 ? (
-                  <p className="text-blue-200/40 text-center py-10 text-sm">No files stored in the Drive folder yet.</p>
+                  <p className="text-blue-200/40 text-center py-10 text-sm">No files stored in the {activeType === "plan" ? "Audit Plan" : "Audit Report"} folder yet.</p>
                 ) : (
                   <div className="divide-y divide-white/5">
                     {files.map((f) => (
