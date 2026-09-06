@@ -214,30 +214,37 @@ export default function AuditSchedulePage() {
                 const auditBranches = audits.filter((a) => { if (seen.has(a.branch_id)) return false; seen.add(a.branch_id); return true; });
                 const isSelected = selectedDay === cell.key;
                 const isToday = cell.key === toDateStr(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+                const hasAudit = auditBranches.length > 0;
+                const tileColor = hasAudit ? branchColorMap[auditBranches[0].branch_id] || "bg-blue-500" : "";
                 return (
                   <button key={cell.key} onClick={() => { if (cell.current) setSelectedDay(isSelected ? null : cell.key); }}
                     className={`relative min-h-[72px] p-1 text-left transition-colors ${cell.current ? (isSelected ? "bg-blue-600/20 ring-1 ring-blue-500" : "bg-slate-800/50 hover:bg-white/5") : "bg-slate-900/30"}`}>
-                    <span className={`text-xs font-medium ${cell.current ? (isToday ? "text-blue-400" : "text-white/70") : "text-white/20"}`}>{cell.day}</span>
-                    <div className="mt-0.5 space-y-0.5">
-                      {auditBranches.slice(0, 3).map((a) => (
-                        <div key={a.branch_id} className={`text-[9px] leading-tight px-1 py-0.5 rounded truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/30 text-white/90`}>
+                    <span className="flex items-center justify-between">
+                      <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${hasAudit ? `${tileColor} text-white shadow` : cell.current ? (isToday ? "text-blue-400 ring-1 ring-blue-500/60 bg-blue-500/10" : "text-white/70") : "text-white/25"}`}>
+                        {cell.day}
+                      </span>
+                      {hasAudit && <span className="text-[9px] font-medium text-white/40">{auditBranches.length} b</span>}
+                    </span>
+                    <div className="mt-1 space-y-0.5">
+                      {auditBranches.slice(0, 2).map((a) => (
+                        <div key={a.branch_id} className={`text-[10px] leading-tight px-1.5 py-1 rounded-md truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/40 text-white border border-white/10`}>
                           {a.branch_name}
                         </div>
                       ))}
-                      {auditBranches.length > 3 && <div className="text-[9px] text-white/40 px-1">+{auditBranches.length - 3} more</div>}
+                      {auditBranches.length > 2 && <div className="text-[9px] text-white/40 px-1">+{auditBranches.length - 2} more</div>}
                     </div>
                   </button>
                 );
               })}
             </div>
             <div className="flex flex-wrap gap-3 mt-4">
-              {branches.map((b) => (<div key={b.id} className="flex items-center gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${branchColorMap[b.id]}`} /><span className="text-xs text-white/60">{b.name}</span></div>))}
+              {branches.map((b) => (<div key={b.id} className="flex items-center gap-1.5"><div className={`w-3.5 h-3.5 rounded-md ${branchColorMap[b.id]}`} /><span className="text-xs text-white/60">{b.name}</span></div>))}
             </div>
           </div>
 
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-white mb-3">{selectedDay ? `Audits on ${selectedDay}` : "Select a day"}</h3>
-            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day with colored dots to see scheduled audits.</p>}
+            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day with colored tiles to see scheduled audits.</p>}
             {selectedDay && selectedDaySchedules.length === 0 && <p className="text-xs text-blue-200/40">No audits scheduled for this day.</p>}
             {selectedDaySchedules.map((s) => (
               <div key={s.id} className="mb-3 p-3 bg-white/5 rounded-lg border border-white/5">
