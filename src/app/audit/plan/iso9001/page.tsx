@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface AuditSchedule {
   id: string; branch_id: string; date_from: string; date_to: string;
@@ -21,6 +23,42 @@ interface AuditPlan {
   checklist: { clause: string; item: string; result: string; remark: string }[];
   findings: Finding[]; nonconformities: Nonconformity[];
   overall_result: string; created_at: string;
+  document_number: string | null; date_of_plan: string | null; prepared_by: string | null;
+  signature: string | null; pdf_url: string | null; pdf_public_id: string | null;
+}
+
+const SIG_DEFAULT = "/signature.png";
+const LOGO = "/logo.jpg";
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function sanitizeFile(name: string) {
+  return name.replace(/[^a-zA-Z0-9]+/g, "_");
+}
+
+function genIsoDocNumber(branchName: string, count: number) {
+  const code = (branchName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "QMS");
+  return `QMS/ISO/${new Date().getFullYear()}/${code}-${String(count + 1).padStart(3, "0")}`;
+}
+
+function loadImageData(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("canvas"));
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
 }
 
 const ISO_CLAUSES = [
@@ -89,6 +127,11 @@ export default function AuditPlanPage() {
   const [planScope, setPlanScope] = useState("");
   const [planObjectives, setPlanObjectives] = useState("");
   const [planTeam, setPlanTeam] = useState("");
+  const [planPreparedBy, setPlanPreparedBy] = useState("");
+  const [planDate, setPlanDate] = useState(todayStr());
+  const [planDocNum, setPlanDocNum] = useState("");
+  const [planSignature, setPlanSignature] = useState("");
+  const [pdfSaving, setPdfSaving] = useState(false);
 
   const [viewingPlan, setViewingPlan] = useState<string | null>(null);
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
@@ -120,6 +163,9 @@ export default function AuditPlanPage() {
       checklist: r.checklist || [], findings: r.findings || [],
       nonconformities: r.nonconformities || [], overall_result: r.overall_result || "Open",
       created_at: r.created_at,
+      document_number: r.document_number || null, date_of_plan: r.date_of_plan || null,
+      prepared_by: r.prepared_by || null, signature: r.signature || null,
+      pdf_url: r.pdf_url || null, pdf_public_id: r.pdf_public_id || null,
     })));
     setLoading(false);
   }, [supabase]);
@@ -148,10 +194,13 @@ export default function AuditPlanPage() {
       objectives: planObjectives.trim() || null, criteria: "ISO 9001:2015",
       audit_team: planTeam.trim() || null, description: null, status: "Draft",
       checklist: cl, findings: [], nonconformities: [], overall_result: "Open",
+      document_number: planDocNum.trim() || null, date_of_plan: planDate || null,
+      prepared_by: planPreparedBy.trim() || null, signature: planSignature || null,
     });
     setSaving(false);
     if (error) return showErr(error.message);
     setPlanTitle(""); setPlanScope(""); setPlanObjectives(""); setPlanTeam("");
+    setPlanPreparedBy(""); setPlanDocNum(""); setPlanSignature("");
     setSelectedSchedule(null);
     showMsg("Audit plan created.");
     fetchData();
@@ -187,6 +236,184 @@ export default function AuditPlanPage() {
     fetchData();
   }
 
+  async function onSignatureUpload(file: File | null) {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) return showErr("Signature image must be under 2MB.");
+    const reader = new FileReader();
+    reader.onload = () => setPlanSignature(String(reader.result));
+    reader.readAsDataURL(file);
+  }
+
+  function onSchedulePicked(id: string) {
+    setSelectedSchedule(id || null);
+    if (!planDocNum) {
+      const sched = scheduleMap[id || ""];
+      if (sched?.branch_name) setPlanDocNum(genIsoDocNumber(sched.branch_name, plans.length));
+    }
+  }
+
+  async function generatePdf(plan: AuditPlan) {
+    setPdfSaving(true);
+    setError("");
+    try {
+      const sched = scheduleMap[plan.schedule_id];
+      const branchName = sched?.branch_name || "—";
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      const maxWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      try {
+        const logoUrl = await loadImageData(LOGO);
+        const logoW = 40;
+        const logoH = 28;
+        doc.addImage(logoUrl, "PNG", (pageWidth - logoW) / 2, y, logoW, logoH);
+      } catch { /* logo unavailable */ }
+
+      y += 42;
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text("ISO 9001 AUDIT PLAN", pageWidth / 2, y, { align: "center" });
+      y += 10;
+
+      const line = (t: string, size = 10, color: [number, number, number] = [30, 41, 59], gap = 5) => {
+        doc.setFontSize(size);
+        doc.setTextColor(color[0], color[1], color[2]);
+        const lines = doc.splitTextToSize(t, maxWidth);
+        doc.text(lines, margin, y);
+        y += (lines.length * size * 0.45) + gap;
+        return y;
+      };
+      const sectionTitle = (t: string) => {
+        doc.setFontSize(12);
+        doc.setTextColor(29, 78, 216);
+        doc.text(t, margin, y);
+        y += 7;
+        doc.setDrawColor(29, 78, 216);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 7;
+      };
+
+      autoTable(doc, {
+        startY: y,
+        theme: "grid",
+        head: [["Field", "Value"]],
+        body: [
+          ["Branch Name", branchName],
+          ["Audit Title", plan.title || "—"],
+          ["Document Number", plan.document_number || "—"],
+          ["Audit Period", sched ? `${sched.date_from} to ${sched.date_to}` : "—"],
+          ["Date of Plan", plan.date_of_plan || "—"],
+          ["Prepared by", plan.prepared_by || "—"],
+          ["Criteria", plan.criteria || "ISO 9001:2015"],
+        ],
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        headStyles: { fillColor: [29, 78, 216] },
+        columnStyles: { 0: { fontStyle: "bold", cellWidth: 55 } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 12;
+
+      sectionTitle("1. Scope");
+      line(plan.scope || "—", 10, [51, 65, 85]);
+
+      sectionTitle("2. Objectives");
+      line(plan.objectives || "—", 10, [51, 65, 85]);
+
+      sectionTitle("3. Audit Team");
+      line(plan.audit_team || "—", 10, [51, 65, 85]);
+
+      sectionTitle("4. ISO 9001:2015 Clause Checklist");
+      if (y > 760) { doc.addPage(); y = margin; }
+      autoTable(doc, {
+        startY: y,
+        theme: "grid",
+        head: [["Clause", "Requirement"]],
+        body: plan.checklist.length
+          ? plan.checklist.map((c) => [c.clause, c.item])
+          : ISO_CLAUSES.flatMap((c) => c.items.map((item) => [c.clause, item])),
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [29, 78, 216] },
+        columnStyles: { 0: { cellWidth: 22 } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 12;
+
+      if (plan.findings.length > 0) {
+        sectionTitle("5. Findings");
+        if (y > 760) { doc.addPage(); y = margin; }
+        autoTable(doc, {
+          startY: y,
+          theme: "grid",
+          head: [["Department", "Clause", "Severity", "Detail"]],
+          body: plan.findings.map((f) => [f.department || "General", f.clause || "—", f.type, f.detail]),
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [29, 78, 216] },
+          columnStyles: { 3: { cellWidth: 90 } },
+        });
+        y = (doc as any).lastAutoTable.finalY + 12;
+      }
+
+      if (plan.nonconformities.length > 0) {
+        sectionTitle("6. Nonconformities & Corrective Actions");
+        if (y > 760) { doc.addPage(); y = margin; }
+        autoTable(doc, {
+          startY: y,
+          theme: "grid",
+          head: [["Clause", "Description", "Action", "Responsible", "Target", "Status"]],
+          body: plan.nonconformities.map((nc) => [nc.clause, nc.description, nc.corrective_action || "—", nc.responsible || "—", nc.target_date || "—", nc.status || "—"]),
+          styles: { fontSize: 7.5, cellPadding: 2 },
+          headStyles: { fillColor: [29, 78, 216] },
+        });
+        y = (doc as any).lastAutoTable.finalY + 12;
+      }
+
+      sectionTitle("7. Confidentiality");
+      line("All information obtained during this audit will be treated as confidential and used solely for audit and improvement purposes.", 10, [51, 65, 85]);
+
+      if (y > 700) { doc.addPage(); y = margin; }
+      y += 8;
+      doc.setFontSize(10); doc.setTextColor(51, 65, 85);
+      doc.text(`Prepared by: ${plan.prepared_by || "_______________"}`, margin, y);
+      doc.text(`Date: ${plan.date_of_plan || "____________"}`, pageWidth - margin, y, { align: "right" });
+      y += 14;
+      doc.text("Signature:", margin, y);
+      const sigUrl = plan.signature || SIG_DEFAULT;
+      try {
+        const dataUrl = await loadImageData(sigUrl);
+        doc.addImage(dataUrl, "PNG", margin + 20, y - 8, 45, 22);
+      } catch { /* signature image unavailable */ }
+
+      const blob = doc.output("blob");
+      const formData = new FormData();
+      formData.append("file", blob, `${sanitizeFile(branchName)}_ISO_Audit_Plan.pdf`);
+      const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
+        return showErr(errJson?.error?.message || "PDF upload failed.");
+      }
+      const json = await res.json();
+      if (!json.url) return showErr("PDF upload failed.");
+
+      const { error: updErr } = await supabase
+        .from("audit_plans")
+        .update({ pdf_url: json.url, pdf_public_id: json.fileId || null, updated_at: new Date().toISOString() })
+        .eq("id", plan.id);
+      if (updErr) {
+        if (updErr.message.includes("pdf_url") || updErr.message.includes("column")) {
+          return showErr("PDF saved to Google Drive, but the audit_plans table is missing PDF columns. Run the ISO PDF migration in Supabase (see repo supabase/migrations).");
+        }
+        return showErr(updErr.message);
+      }
+      showMsg("ISO 9001 audit plan PDF saved to Google Drive.");
+      fetchData();
+    } catch (e: any) {
+      showErr(e?.message || "Could not generate PDF.");
+    } finally {
+      setPdfSaving(false);
+    }
+  }
+
   function renderPlainClauses() {
     return (
       <div className="space-y-3">
@@ -216,9 +443,16 @@ export default function AuditPlanPage() {
             <h3 className="text-xl font-bold text-white">{plan.title}</h3>
             {plan.overall_result && <span className={`mt-1 inline-block px-2 py-0.5 text-xs rounded-full ${plan.overall_result === "Closed" ? "bg-green-500/20 text-green-300" : plan.overall_result === "Significant NC" ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300"}`}>{plan.overall_result}</span>}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center flex-wrap">
             <button onClick={() => startEdit(plan)} className="text-xs text-blue-300 hover:text-white">Edit</button>
             <button onClick={() => { if (confirm("Delete?")) handleDeletePlan(plan.id); }} className="text-xs text-red-400 hover:text-red-300">Delete</button>
+            {plan.pdf_url ? (
+              <a href={plan.pdf_url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg">View PDF</a>
+            ) : (
+              <button onClick={(e) => { e.stopPropagation(); generatePdf(plan); }} disabled={pdfSaving} className="text-xs bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg">
+                {pdfSaving ? "Saving..." : "Save to Google Drive"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -328,7 +562,7 @@ export default function AuditPlanPage() {
           <form onSubmit={handleCreatePlan}>
             <div className="mb-4">
               <label className="block text-sm text-blue-200/70 mb-1">Select Branch Schedule</label>
-              <select value={selectedSchedule || ""} onChange={(e) => setSelectedSchedule(e.target.value || null)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
+              <select value={selectedSchedule || ""} onChange={(e) => onSchedulePicked(e.target.value)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
                 <option value="" className="bg-slate-800">Choose a branch schedule...</option>
                 {availableSchedules.map((s) => (<option key={s.id} value={s.id} className="bg-slate-800">{s.branch_name} ({s.date_from} → {s.date_to})</option>))}
               </select>
@@ -348,6 +582,30 @@ export default function AuditPlanPage() {
                 <label className="block text-sm text-blue-200/70 mb-1">Audit Team</label>
                 <input type="text" value={planTeam} onChange={(e) => setPlanTeam(e.target.value)} placeholder="Auditor names" className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-sm text-blue-200/70 mb-1">Prepared by</label>
+                <input type="text" value={planPreparedBy} onChange={(e) => setPlanPreparedBy(e.target.value)} placeholder="Auditor name" className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm text-blue-200/70 mb-1">Date of Plan</label>
+                <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]" />
+              </div>
+              <div>
+                <label className="block text-sm text-blue-200/70 mb-1">Document Number</label>
+                <input type="text" value={planDocNum} onChange={(e) => setPlanDocNum(e.target.value)} placeholder="Auto-fills from branch" className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm text-blue-200/70 mb-1">Signature (optional — default uses your saved signature)</label>
+              <input type="file" accept="image/*" onChange={(e) => onSignatureUpload(e.target.files?.[0] || null)} className="text-sm text-white/60 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:text-sm file:font-medium hover:file:bg-blue-500" />
+              {planSignature && (
+                <div className="mt-2 flex items-center gap-3">
+                  <img src={planSignature} alt="Signature" className="h-12" />
+                  <button type="button" onClick={() => setPlanSignature("")} className="text-xs text-red-400 hover:text-red-300">Reset to default</button>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>

@@ -188,7 +188,7 @@ export default function CapaPage() {
     const isoSrc: CapaPlan[] = (isoPlans || []).map((r: any) => ({
       id: r.id, title: r.title, branch_id: r.branch_id, branch_name: schedBranch.get(r.schedule_id) || "Unassigned",
       document_number: r.document_number, date_of_plan: r.date_of_plan, audit_period: r.audit_period,
-      signature: null, prepared_by: r.prepared_by, source: "iso", findings: r.findings || [],
+      signature: r.signature || null, prepared_by: r.prepared_by, source: "iso", findings: r.findings || [],
     }));
     setPlans([...intPlans, ...isoSrc]);
     if (settingsData) setSettings({ hr_name: settingsData.hr_name || "", ceo_name: settingsData.ceo_name || "" });

@@ -5,10 +5,36 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
 interface Schedule { id: string; branch_id: string; branch_name?: string; date_from: string; date_to: string; departments: string[]; }
-interface Plan { id: string; schedule_id: string; title: string; criteria: string; description: string | null; findings: Finding[]; overall_result: string; created_at: string; branch_name?: string; }
+interface Plan { id: string; schedule_id: string; title: string; criteria: string; description: string | null; findings: Finding[]; overall_result: string; created_at: string; branch_name?: string; document_number?: string | null; date_of_plan?: string | null; prepared_by?: string | null; signature?: string | null; pdf_url?: string | null; pdf_public_id?: string | null; }
+
+const SIG_DEFAULT = "/signature.png";
+const LOGO = "/logo.jpg";
+
+function sanitizeFile(name: string) {
+  return name.replace(/[^a-zA-Z0-9]+/g, "_");
+}
+
+function loadImageData(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("canvas"));
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
 
 const ISO_CLAUSES = [
   { clause: "4", title: "Context of the Organization", items: [
@@ -104,6 +130,7 @@ export default function Iso9001Report() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [lastGenerate, setLastGenerate] = useState<{ count: number; source: string } | null>(null);
+  const [pdfSaving, setPdfSaving] = useState(false);
 
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
@@ -128,6 +155,9 @@ export default function Iso9001Report() {
         description: p.description || null, findings: p.findings || [],
         overall_result: p.overall_result || "Open", created_at: p.created_at,
         branch_name: sched?.branches?.name || "",
+        document_number: p.document_number || null, date_of_plan: p.date_of_plan || null,
+        prepared_by: p.prepared_by || null, signature: p.signature || null,
+        pdf_url: p.pdf_url || null, pdf_public_id: p.pdf_public_id || null,
       };
     }));
     setLoading(false);
@@ -270,6 +300,154 @@ export default function Iso9001Report() {
     updateLocal(planId, updated);
     await persist(planId, updated);
     await deleteDriveFileByUrl(removedUrl);
+  }
+
+  async function generateReportPdf(plan: Plan) {
+    setPdfSaving(true);
+    setError("");
+    try {
+      const sched = schedules.find((s) => s.id === plan.schedule_id);
+      const branchName = plan.branch_name || sched?.branch_name || "—";
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      const maxWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      try {
+        const logoUrl = await loadImageData(LOGO);
+        const logoW = 40;
+        const logoH = 28;
+        doc.addImage(logoUrl, "PNG", (pageWidth - logoW) / 2, y, logoW, logoH);
+      } catch { /* logo unavailable */ }
+
+      y += 42;
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text("ISO 9001 AUDIT REPORT", pageWidth / 2, y, { align: "center" });
+      y += 10;
+
+      const line = (t: string, size = 10, color: [number, number, number] = [30, 41, 59], gap = 5) => {
+        doc.setFontSize(size);
+        doc.setTextColor(color[0], color[1], color[2]);
+        const lines = doc.splitTextToSize(t, maxWidth);
+        doc.text(lines, margin, y);
+        y += (lines.length * size * 0.45) + gap;
+        return y;
+      };
+      const sectionTitle = (t: string) => {
+        doc.setFontSize(12);
+        doc.setTextColor(29, 78, 216);
+        doc.text(t, margin, y);
+        y += 7;
+        doc.setDrawColor(29, 78, 216);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 7;
+      };
+
+      autoTable(doc, {
+        startY: y,
+        theme: "grid",
+        head: [["Field", "Value"]],
+        body: [
+          ["Branch Name", branchName],
+          ["Audit Title", plan.title || "—"],
+          ["Document Number", plan.document_number || "—"],
+          ["Audit Period", sched ? `${sched.date_from} to ${sched.date_to}` : "—"],
+          ["Date of Plan", plan.date_of_plan || "—"],
+          ["Prepared by", plan.prepared_by || "—"],
+          ["Criteria", plan.criteria || "ISO 9001:2015"],
+          ["Overall Result", plan.overall_result || "Open"],
+        ],
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        headStyles: { fillColor: [29, 78, 216] },
+        columnStyles: { 0: { fontStyle: "bold", cellWidth: 55 } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 12;
+
+      sectionTitle("1. Audit Notes");
+      if (y > 600) { doc.addPage(); y = margin; }
+      line(plan.description || "No audit notes recorded.", 10, [51, 65, 85]);
+
+      sectionTitle("2. Findings by Department & Clause");
+      if (plan.findings.length === 0) {
+        line("No findings recorded for this audit.", 10, [51, 65, 85]);
+      } else {
+        const byDept = new Map<string, Finding[]>();
+        plan.findings.forEach((f) => {
+          const key = f.department || "General";
+          if (!byDept.has(key)) byDept.set(key, []);
+          byDept.get(key)!.push(f);
+        });
+        byDept.forEach((list, dept) => {
+          if (y > 740) { doc.addPage(); y = margin; }
+          sectionTitle(`Department: ${dept}`);
+          if (y > 740) { doc.addPage(); y = margin; }
+          autoTable(doc, {
+            startY: y,
+            theme: "grid",
+            head: [["#", "Clause", "Severity", "Detail", "Recommendation", "Status"]],
+            body: list.map((f, i) => [
+              String(i + 1), f.clause || "—", f.type, f.detail, f.recommendation || "—",
+              f.resolved === true ? "Resolved" : "Open",
+            ]),
+            styles: { fontSize: 7.5, cellPadding: 2 },
+            headStyles: { fillColor: [29, 78, 216] },
+            columnStyles: { 3: { cellWidth: 55 }, 4: { cellWidth: 55 } },
+          });
+          y = (doc as any).lastAutoTable.finalY + 10;
+        });
+      }
+
+      sectionTitle("3. Overall Result");
+      line(plan.overall_result || "Open", 10, [51, 65, 85]);
+
+      sectionTitle("4. Confidentiality");
+      line("All information obtained during this audit will be treated as confidential and used solely for audit and improvement purposes.", 10, [51, 65, 85]);
+
+      if (y > 700) { doc.addPage(); y = margin; }
+      y += 8;
+      doc.setFontSize(10); doc.setTextColor(51, 65, 85);
+      doc.text(`Prepared by: ${plan.prepared_by || "_______________"}`, margin, y);
+      doc.text(`Date: ${plan.date_of_plan || "____________"}`, pageWidth - margin, y, { align: "right" });
+      y += 14;
+      doc.text("Signature:", margin, y);
+      const sigUrl = plan.signature || SIG_DEFAULT;
+      try {
+        const dataUrl = await loadImageData(sigUrl);
+        doc.addImage(dataUrl, "PNG", margin + 20, y - 8, 45, 22);
+      } catch { /* signature image unavailable */ }
+
+      const blob = doc.output("blob");
+      const formData = new FormData();
+      formData.append("file", blob, `${sanitizeFile(branchName)}_ISO_Audit_Report.pdf`);
+      formData.append("folderKind", "report");
+      const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
+        return showErr(errJson?.error?.message || "PDF upload failed.");
+      }
+      const json = await res.json();
+      if (!json.url) return showErr("PDF upload failed.");
+
+      const { error: updErr } = await supabase
+        .from("audit_plans")
+        .update({ pdf_url: json.url, pdf_public_id: json.fileId || null, updated_at: new Date().toISOString() })
+        .eq("id", plan.id);
+      if (updErr) {
+        if (updErr.message.includes("pdf_url") || updErr.message.includes("column")) {
+          return showErr("PDF saved to Google Drive, but the audit_plans table is missing PDF columns. Run the ISO PDF migration in Supabase (see repo supabase/migrations).");
+        }
+        return showErr(updErr.message);
+      }
+      setPlans((prev) => prev.map((p) => (p.id === plan.id ? { ...p, pdf_url: json.url, pdf_public_id: json.fileId || null } : p)));
+      showMsg("ISO 9001 audit report PDF saved to Google Drive.");
+    } catch (e: any) {
+      showErr(e?.message || "Could not generate PDF.");
+    } finally {
+      setPdfSaving(false);
+    }
   }
 
   const branches: { name: string; plans: Plan[] }[] = [];
@@ -428,10 +606,21 @@ export default function Iso9001Report() {
 
                                   {expandedPlan === plan.id && (
                                     <div className="px-5 pb-5">
-                                      <div className="flex flex-wrap gap-2 mb-4">
-                                        {SEVERITIES.map((sev) => (
-                                          <span key={sev} className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[sev]}`}>{sev}: {ps[sev]}</span>
-                                        ))}
+                                      <div className="flex flex-wrap items-center gap-3 mb-4">
+                                        <div className="flex flex-wrap gap-2">
+                                          {SEVERITIES.map((sev) => (
+                                            <span key={sev} className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[sev]}`}>{sev}: {ps[sev]}</span>
+                                          ))}
+                                        </div>
+                                        <div className="ml-auto flex items-center gap-2">
+                                          {plan.pdf_url ? (
+                                            <a href={plan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">View PDF</a>
+                                          ) : (
+                                            <button onClick={() => generateReportPdf(plan)} disabled={pdfSaving} className="px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white transition-colors">
+                                              {pdfSaving ? "Saving..." : "Save Report PDF to Drive"}
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                       {plan.findings.length === 0 ? (
                                         <p className="text-sm text-blue-200/40">No findings generated for this audit. Select it above, write your notes, and generate.</p>
