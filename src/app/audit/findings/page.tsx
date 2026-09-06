@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
+import { deleteDriveFileByUrl } from "@/lib/drive-file";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
 interface AuditPlan {
@@ -156,9 +157,12 @@ export default function AuditFindings() {
   async function removeEvidence(planId: string, idx: number, evIdx: number) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan) return;
+    const ev = plan.findings[idx].evidence || [];
+    const removedUrl = ev[evIdx] || null;
     const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: (f.evidence || []).filter((_, j) => j !== evIdx) } : f));
     updateLocal(planId, updated);
     await persist(planId, updated);
+    await deleteDriveFileByUrl(removedUrl);
   }
 
   const branches: { name: string; plans: AuditPlan[] }[] = [];

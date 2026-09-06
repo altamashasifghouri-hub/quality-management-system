@@ -5,6 +5,7 @@ import Link from "next/link";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const [userName, setUserName] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -13,6 +14,20 @@ export default function Navbar() {
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { data } = await supabase.auth.getUser();
+        const meta = data?.user?.user_metadata;
+        setUserName(meta?.full_name || data?.user?.email?.split("@")[0] || "");
+      } catch {
+        setUserName("");
+      }
+    })();
   }, []);
 
   return (
@@ -76,7 +91,7 @@ export default function Navbar() {
             )}
           </div>
 
-          <span className="hidden md:block text-sm text-white font-medium">Admin</span>
+          {userName && <span className="hidden md:block text-sm text-white font-medium">{userName}</span>}
 
           <button
             type="button"

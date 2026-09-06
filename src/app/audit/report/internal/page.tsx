@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { deleteDriveFileByUrl } from "@/lib/drive-file";
 
 interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; branch_manager: string | null; locations: string[] | null; departments: Department[]; }
@@ -339,8 +340,11 @@ export default function InternalAuditReport() {
   }
 
   async function handleDeleteReport(id: string) {
+    const report = reports.find((r) => r.id === id);
+    const fileId = report?.pdf_public_id || null;
     const { error: err } = await supabase.from("audit_reports").delete().eq("id", id);
     if (err) return showErr(err.message);
+    if (fileId) await deleteDriveFileByUrl(fileId);
     showMsg("Report deleted.");
     setViewingReportId(null); setEditingReportId(null);
     fetchData();

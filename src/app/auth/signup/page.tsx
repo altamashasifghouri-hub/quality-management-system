@@ -19,6 +19,18 @@ export default function SignUp() {
     setError("");
     setMessage("");
 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setError("Enter a valid email address.");
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      setLoading(false);
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       setLoading(false);
