@@ -106,6 +106,10 @@ export default function AuditSchedulePage() {
     return <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 border border-white/10 text-blue-200/40">No plan yet</span>;
   }
 
+  function isoMentioned(s: AuditSchedule) {
+    return /iso/i.test(s.notes || "") || /iso/i.test((s.departments || []).join(" ")) || planBySchedule[s.id] === "iso";
+  }
+
   function toggleDept(deptId: string) {
     setSelectedDepts((prev) => prev.includes(deptId) ? prev.filter((d) => d !== deptId) : [...prev, deptId]);
   }
@@ -227,8 +231,9 @@ export default function AuditSchedulePage() {
                     </span>
                     <div className="mt-1 space-y-0.5">
                       {auditBranches.slice(0, 2).map((a) => (
-                        <div key={a.branch_id} className={`text-[10px] leading-tight px-1.5 py-1 rounded-md truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/40 text-white border border-white/10`}>
-                          {a.branch_name}
+                        <div key={a.branch_id} className={`flex items-center gap-1 text-[10px] leading-tight px-1.5 py-1 rounded-md truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/40 text-white border border-white/10`}>
+                          <span className="truncate">{a.branch_name}</span>
+                          {isoMentioned(a) && <span className="shrink-0 px-1 py-px rounded-full bg-blue-500 text-white text-[8px] font-semibold">ISO</span>}
                         </div>
                       ))}
                       {auditBranches.length > 2 && <div className="text-[9px] text-white/40 px-1">+{auditBranches.length - 2} more</div>}
@@ -252,6 +257,7 @@ export default function AuditSchedulePage() {
                   <div className={`w-2 h-2 rounded-full ${branchColorMap[s.branch_id] || "bg-gray-500"}`} />
                   <span className="text-sm font-medium text-white">{s.branch_name}</span>
                   {planBadge(s.id)}
+                  {isoMentioned(s) && <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">notes: ISO</span>}
                 </div>
                 <div className="text-xs text-blue-200/60 ml-4">{s.date_from} → {s.date_to}</div>
                 <div className="text-xs text-blue-200/40 ml-4 mt-1 flex flex-wrap gap-1">
@@ -331,6 +337,7 @@ export default function AuditSchedulePage() {
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="text-white font-medium">{s.branch_name}</span>
                         {planBadge(s.id)}
+                        {isoMentioned(s) && <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">notes: ISO</span>}
                         {planBySchedule[s.id] && <span className="text-xs text-blue-200/40">· 1 plan</span>}
                         <span className={`px-2 py-0.5 text-xs rounded-full ${s.status === "Completed" ? "bg-green-500/20 text-green-300" : s.status === "In Progress" ? "bg-amber-500/20 text-amber-300" : s.status === "Scheduled" ? "bg-blue-500/20 text-blue-300" : "bg-white/10 text-white/60"}`}>{s.status}</span>
                       </div>
