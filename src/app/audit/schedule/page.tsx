@@ -215,15 +215,15 @@ export default function AuditSchedulePage() {
                 const isSelected = selectedDay === cell.key;
                 const isToday = cell.key === toDateStr(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                 const hasAudit = auditBranches.length > 0;
-                const tileColor = hasAudit ? "bg-red-500" : "";
+                const cellColor = hasAudit ? `${branchColorMap[auditBranches[0].branch_id] || "bg-blue-500"}` : "";
                 return (
                   <button key={cell.key} onClick={() => { if (cell.current) setSelectedDay(isSelected ? null : cell.key); }}
-                    className={`relative min-h-[72px] p-1 text-left transition-colors ${cell.current ? (isSelected ? "bg-blue-600/20 ring-1 ring-blue-500" : "bg-slate-800/50 hover:bg-white/5") : "bg-slate-900/30"}`}>
+                    className={`relative min-h-[72px] p-1 text-left transition-colors border ${cell.current ? (isSelected ? "bg-blue-600/30 ring-1 ring-blue-500 border-blue-400/30" : hasAudit ? `${cellColor}/25 border-white/10 hover:brightness-125` : "bg-slate-800/50 border-white/5 hover:bg-white/5") : "bg-slate-900/30 border-white/5"}`}>
                     <span className="flex items-center justify-between">
-                      <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${hasAudit ? `${tileColor} text-white shadow` : cell.current ? (isToday ? "text-blue-400 ring-1 ring-blue-500/60 bg-blue-500/10" : "text-white/70") : "text-white/25"}`}>
+                      <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${hasAudit ? `${cellColor} text-white shadow` : cell.current ? (isToday ? "text-blue-400 ring-1 ring-blue-500/60 bg-blue-500/10" : "text-white/70") : "text-white/25"}`}>
                         {cell.day}
                       </span>
-                      {hasAudit && <span className="text-[9px] font-medium text-white/40">{auditBranches.length} b</span>}
+                      {hasAudit && <span className="text-[9px] font-medium text-white/50">{auditBranches.length} b</span>}
                     </span>
                     <div className="mt-1 space-y-0.5">
                       {auditBranches.slice(0, 2).map((a) => (
