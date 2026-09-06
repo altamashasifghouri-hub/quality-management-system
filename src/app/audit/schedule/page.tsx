@@ -215,7 +215,7 @@ export default function AuditSchedulePage() {
                 const isSelected = selectedDay === cell.key;
                 const isToday = cell.key === toDateStr(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                 const hasAudit = auditBranches.length > 0;
-                const tileColor = hasAudit ? branchColorMap[auditBranches[0].branch_id] || "bg-blue-500" : "";
+                const tileColor = hasAudit ? "bg-red-500" : "";
                 return (
                   <button key={cell.key} onClick={() => { if (cell.current) setSelectedDay(isSelected ? null : cell.key); }}
                     className={`relative min-h-[72px] p-1 text-left transition-colors ${cell.current ? (isSelected ? "bg-blue-600/20 ring-1 ring-blue-500" : "bg-slate-800/50 hover:bg-white/5") : "bg-slate-900/30"}`}>
