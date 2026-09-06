@@ -9,7 +9,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
-interface Schedule { id: string; branch_id: string; branch_name?: string; date_from: string; date_to: string; departments: string[]; }
+interface Schedule { id: string; branch_id: string; branch_name?: string; branch_manager?: string | null; date_from: string; date_to: string; departments: string[]; }
 interface Plan { id: string; schedule_id: string; title: string; criteria: string; description: string | null; findings: Finding[]; overall_result: string; created_at: string; branch_name?: string; document_number?: string | null; date_of_plan?: string | null; prepared_by?: string | null; signature?: string | null; pdf_url?: string | null; pdf_public_id?: string | null; }
 
 const SIG_DEFAULT = "/signature.png";
@@ -141,11 +141,12 @@ export default function Iso9001Report() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [{ data: schedData }, { data: planData }] = await Promise.all([
-      supabase.from("audit_schedules").select("*, branches(name)").order("date_from"),
+      supabase.from("audit_schedules").select("*, branches(name, branch_manager)").order("date_from"),
       supabase.from("audit_plans").select("*").order("created_at", { ascending: false }),
     ]);
     setSchedules((schedData || []).map((s: any) => ({
       id: s.id, branch_id: s.branch_id, branch_name: s.branches?.name || "",
+      branch_manager: s.branches?.branch_manager || null,
       date_from: s.date_from, date_to: s.date_to, departments: s.departments || [],
     })));
     setPlans((planData || []).map((p: any) => {
@@ -351,6 +352,7 @@ export default function Iso9001Report() {
         head: [["Field", "Value"]],
         body: [
           ["Branch Name", branchName],
+          ["Branch Manager", sched?.branch_manager || "—"],
           ["Audit Title", plan.title || "—"],
           ["Document Number", plan.document_number || "—"],
           ["Audit Period", sched ? `${sched.date_from} to ${sched.date_to}` : "—"],
@@ -507,6 +509,7 @@ export default function Iso9001Report() {
                   <h3 className="text-sm font-semibold text-blue-300 mb-3">Audit details</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div><span className="text-blue-200/50 block text-xs">Branch</span><span className="text-white">{selectedPlan.branch_name || "—"}</span></div>
+                    <div><span className="text-blue-200/50 block text-xs">Branch Manager</span><span className="text-white">{selectedSched?.branch_manager || "—"}</span></div>
                     <div><span className="text-blue-200/50 block text-xs">Audit Title</span><span className="text-white">{selectedPlan.title}</span></div>
                     <div><span className="text-blue-200/50 block text-xs">Audit Dates</span><span className="text-white">{selectedSched ? `${selectedSched.date_from} → ${selectedSched.date_to}` : "—"}</span></div>
                     <div><span className="text-blue-200/50 block text-xs">Criteria</span><span className="text-white">{selectedPlan.criteria}</span></div>

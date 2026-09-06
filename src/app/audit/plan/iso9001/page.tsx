@@ -189,14 +189,20 @@ export default function AuditPlanPage() {
       cl.push({ clause: c.clause, item, result: "", remark: "" });
     }));
     setSaving(true);
-    const { error } = await supabase.from("audit_plans").insert({
+    const base = {
       schedule_id: selectedSchedule, title: planTitle.trim(), scope: planScope.trim() || null,
       objectives: planObjectives.trim() || null, criteria: "ISO 9001:2015",
       audit_team: planTeam.trim() || null, description: null, status: "Draft",
       checklist: cl, findings: [], nonconformities: [], overall_result: "Open",
+    };
+    let { error } = await supabase.from("audit_plans").insert({
+      ...base,
       document_number: planDocNum.trim() || null, date_of_plan: planDate || null,
       prepared_by: planPreparedBy.trim() || null, signature: planSignature || null,
     });
+    if (error && /document_number|prepared_by|date_of_plan|signature|column/i.test(error.message)) {
+      ({ error } = await supabase.from("audit_plans").insert(base));
+    }
     setSaving(false);
     if (error) return showErr(error.message);
     setPlanTitle(""); setPlanScope(""); setPlanObjectives(""); setPlanTeam("");
