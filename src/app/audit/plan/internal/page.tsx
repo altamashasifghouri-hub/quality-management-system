@@ -85,6 +85,9 @@ const REPORTING_TEXT = [
 const INDEPENDENCE_TEXT =
   "The Internal Audit team confirms independence from the operations under review. All information obtained during the audit will be treated as confidential and used solely for audit purposes.";
 
+const AUDIT_REPORTING_INSTRUCTION =
+  "All Non-Conformities (NCs) and significant audit findings identified during the audit shall be reported directly to the CEO. The respective Department Head/Process Owner shall be responsible for determining and implementing appropriate corrective actions within the timeframe. The Internal Auditor shall maintain a record of all findings and follow up on corrective actions to verify their effective implementation and closure.";
+
 const SIG_DEFAULT = "/signature.png";
 const LOGO = "/logo.jpg";
 
@@ -465,6 +468,9 @@ export default function InternalAuditPlan() {
       line(INDEPENDENCE_TEXT, 10, [51, 65, 85]);
 
       if (y > 700) { doc.addPage(); y = margin; }
+      sectionTitle("Audit Reporting Instruction");
+      line(AUDIT_REPORTING_INSTRUCTION, 10, [51, 65, 85]);
+
       y += 8;
       doc.setFontSize(10); doc.setTextColor(51, 65, 85);
       doc.text(`Prepared by: ${plan.prepared_by || "_______________"}`, margin, y);
@@ -898,6 +904,10 @@ export default function InternalAuditPlan() {
                 <p className="text-sm leading-relaxed">{INDEPENDENCE_TEXT}</p>
               </DocSection>
 
+              <DocSection num="" title="Audit Reporting Instruction">
+                <p className="text-sm leading-relaxed">{AUDIT_REPORTING_INSTRUCTION}</p>
+              </DocSection>
+
               <div className="mt-10 border-t border-slate-200 pt-8 flex items-end justify-between">
                 <div>
                   <p className="text-sm font-medium">Prepared by: {viewPlan.prepared_by || "_____________"}</p>
@@ -929,7 +939,7 @@ export default function InternalAuditPlan() {
 function DocSection({ num, title, children }: { num: string; title: string; children: React.ReactNode }) {
   return (
     <div className="mb-6">
-      <h3 className="font-bold text-blue-600 border-b border-slate-200 pb-1 mb-2">{num}. {title}</h3>
+      <h3 className="font-bold text-blue-600 border-b border-slate-200 pb-1 mb-2">{num ? `${num}. ` : ""}{title}</h3>
       {children}
     </div>
   );
