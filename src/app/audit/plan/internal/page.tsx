@@ -78,7 +78,7 @@ const APPROACH_ITEMS = [
 
 const REPORTING_TEXT = [
   "Findings will be classified as: Critical / High / Medium / Low",
-  "Draft report will be discussed in the Closing Meeting with Branch Manager and will be sent on the same day to Management without delay.",
+  "Draft report will be discussed in the Closing Meeting with Branch Manager and will be sent to Management within 2 days.",
   "Management responses and action plans will be required within 5 working days.",
   "Follow-up verification will be conducted within 10 working days of final report issuance.",
 ];
@@ -327,14 +327,18 @@ export default function InternalAuditPlan() {
       const maxWidth = pageWidth - margin * 2;
       let y = margin;
 
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxY = pageHeight - 12;
+      const ensure = (needed: number) => { if (y + needed > maxY) { doc.addPage(); y = margin; } };
+
       try {
         const logoUrl = await loadImageData(LOGO);
         const logoW = 40;
-        const logoH = 28;
+        const logoH = 34;
         doc.addImage(logoUrl, "JPEG", (pageWidth - logoW) / 2, y, logoW, logoH);
       } catch { /* logo unavailable */ }
 
-      y += 42;
+      y += 46;
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
       doc.text("INTERNAL AUDIT PLAN", pageWidth / 2, y, { align: "center" });
@@ -344,11 +348,13 @@ export default function InternalAuditPlan() {
         doc.setFontSize(size);
         doc.setTextColor(color[0], color[1], color[2]);
         const lines = doc.splitTextToSize(t, maxWidth);
+        ensure(lines.length * size * 0.45 + gap + 8);
         doc.text(lines, margin, y);
         y += (lines.length * size * 0.45) + gap;
         return y;
       };
       const sectionTitle = (t: string) => {
+        ensure(40);
         doc.setFontSize(12);
         doc.setTextColor(29, 78, 216);
         doc.text(t, margin, y);
@@ -405,15 +411,15 @@ export default function InternalAuditPlan() {
       sectionTitle("3. Audit Approach & Methodology");
       doc.setFontSize(10); doc.setTextColor(30, 41, 59);
       (plan.approach.length ? plan.approach : APPROACH_ITEMS).forEach((item) => {
-        if (y > 780) { doc.addPage(); y = margin; }
         const wrapped = doc.splitTextToSize(`• ${item}`, maxWidth);
+        ensure(wrapped.length * 4.5 + 4);
         doc.text(wrapped, margin, y);
         y += wrapped.length * 4.5 + 2;
       });
       y += 4;
 
       sectionTitle("4. Detailed Audit Program (Summary)");
-      if (y > 760) { doc.addPage(); y = margin; }
+      ensure(20);
       autoTable(doc, {
         startY: y,
         theme: "grid",
@@ -430,8 +436,8 @@ export default function InternalAuditPlan() {
       sectionTitle("6. Reporting & Follow-up");
       doc.setFontSize(10); doc.setTextColor(30, 41, 59);
       REPORTING_TEXT.forEach((item) => {
-        if (y > 780) { doc.addPage(); y = margin; }
         const wrapped = doc.splitTextToSize(`• ${item}`, maxWidth);
+        ensure(wrapped.length * 4.5 + 4);
         doc.text(wrapped, margin, y);
         y += wrapped.length * 4.5 + 2;
       });
@@ -439,7 +445,7 @@ export default function InternalAuditPlan() {
 
       if (plan.findings.length > 0) {
         sectionTitle("Findings");
-        if (y > 760) { doc.addPage(); y = margin; }
+        ensure(20);
         autoTable(doc, {
           startY: y,
           theme: "grid",
@@ -455,10 +461,10 @@ export default function InternalAuditPlan() {
       sectionTitle("10. Independence & Confidentiality Statement");
       line(INDEPENDENCE_TEXT, 10, [51, 65, 85]);
 
-      if (y > 700) { doc.addPage(); y = margin; }
       sectionTitle("Audit Reporting Instruction");
       line(AUDIT_REPORTING_INSTRUCTION, 10, [51, 65, 85]);
 
+      ensure(42);
       y += 8;
       doc.setFontSize(10); doc.setTextColor(51, 65, 85);
       doc.text(`Prepared by: ${plan.prepared_by || "_______________"}`, margin, y);
