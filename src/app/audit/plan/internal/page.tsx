@@ -444,7 +444,7 @@ export default function InternalAuditPlan() {
       y += 4;
 
       if (plan.findings.length > 0) {
-        sectionTitle("Findings");
+        sectionTitle("7. Findings");
         ensure(20);
         autoTable(doc, {
           startY: y,
@@ -458,10 +458,10 @@ export default function InternalAuditPlan() {
         y = (doc as any).lastAutoTable.finalY + 12;
       }
 
-      sectionTitle("10. Independence & Confidentiality Statement");
+      sectionTitle("8. Independence & Confidentiality Statement");
       line(INDEPENDENCE_TEXT, 10, [51, 65, 85]);
 
-      sectionTitle("Audit Reporting Instruction");
+      sectionTitle("9. Audit Reporting Instruction");
       line(AUDIT_REPORTING_INSTRUCTION, 10, [51, 65, 85]);
 
       ensure(42);
@@ -894,11 +894,11 @@ export default function InternalAuditPlan() {
                 </DocSection>
               )}
 
-              <DocSection num="10" title="Independence & Confidentiality Statement">
+              <DocSection num="8" title="Independence & Confidentiality Statement">
                 <p className="text-sm leading-relaxed">{INDEPENDENCE_TEXT}</p>
               </DocSection>
 
-              <DocSection num="" title="Audit Reporting Instruction">
+              <DocSection num="9" title="Audit Reporting Instruction">
                 <p className="text-sm leading-relaxed">{AUDIT_REPORTING_INSTRUCTION}</p>
               </DocSection>
 
