@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { loadPdfImage } from "@/lib/pdf-image";
 
 interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; departments: Department[]; }
@@ -313,20 +314,7 @@ export default function InternalAuditPlan() {
   const labelCls = "block text-sm text-blue-200/60 mb-1";
 
   function loadImageData(url: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width; canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("canvas"));
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
+    return loadPdfImage(url);
   }
 
   async function generatePdf(plan: InternalAudit) {
@@ -343,7 +331,7 @@ export default function InternalAuditPlan() {
         const logoUrl = await loadImageData(LOGO);
         const logoW = 40;
         const logoH = 28;
-        doc.addImage(logoUrl, "PNG", (pageWidth - logoW) / 2, y, logoW, logoH);
+        doc.addImage(logoUrl, "JPEG", (pageWidth - logoW) / 2, y, logoW, logoH);
       } catch { /* logo unavailable */ }
 
       y += 42;
@@ -480,7 +468,7 @@ export default function InternalAuditPlan() {
       const sigUrl = plan.signature || SIG_DEFAULT;
       try {
         const dataUrl = await loadImageData(sigUrl);
-        doc.addImage(dataUrl, "PNG", margin + 20, y - 8, 45, 22);
+        doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
       setPdfSaving(true);
@@ -506,7 +494,7 @@ export default function InternalAuditPlan() {
           if (errJson?.error === "not_connected") {
             showErr("Connect Google Drive first from the Storage page.");
           } else {
-            showErr(errJson?.error?.message || "PDF generated but upload failed.");
+            showErr(typeof errJson?.error === "string" ? errJson.error : "PDF generated but upload failed.");
           }
         }
       } catch {

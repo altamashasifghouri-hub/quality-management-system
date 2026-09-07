@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { loadPdfImage } from "@/lib/pdf-image";
 
 interface AuditSchedule {
   id: string; branch_id: string; date_from: string; date_to: string;
@@ -45,20 +46,7 @@ function genIsoDocNumber(branchName: string, count: number) {
 }
 
 function loadImageData(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width; canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return reject(new Error("canvas"));
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
+  return loadPdfImage(url);
 }
 
 const ISO_CLAUSES = [
@@ -274,7 +262,7 @@ export default function AuditPlanPage() {
         const logoUrl = await loadImageData(LOGO);
         const logoW = 40;
         const logoH = 28;
-        doc.addImage(logoUrl, "PNG", (pageWidth - logoW) / 2, y, logoW, logoH);
+        doc.addImage(logoUrl, "JPEG", (pageWidth - logoW) / 2, y, logoW, logoH);
       } catch { /* logo unavailable */ }
 
       y += 42;
@@ -386,7 +374,7 @@ export default function AuditPlanPage() {
       const sigUrl = plan.signature || SIG_DEFAULT;
       try {
         const dataUrl = await loadImageData(sigUrl);
-        doc.addImage(dataUrl, "PNG", margin + 20, y - 8, 45, 22);
+        doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
       const blob = doc.output("blob");
@@ -396,7 +384,7 @@ export default function AuditPlanPage() {
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
-        return showErr(errJson?.error?.message || "PDF upload failed.");
+        return showErr(typeof errJson?.error === "string" ? errJson.error : "PDF upload failed.");
       }
       const json = await res.json();
       if (!json.url) return showErr("PDF upload failed.");
