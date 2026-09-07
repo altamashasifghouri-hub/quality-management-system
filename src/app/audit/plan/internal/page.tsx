@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
@@ -21,6 +21,7 @@ interface InternalAudit {
   document_number: string | null;
   branch_id: string;
   branch_name?: string;
+  number_of_employees: number | null;
   schedule_id: string | null;
   departments: string[];
   audit_team: string | null;
@@ -51,6 +52,7 @@ interface PlanForm {
   plan_version: string;
   prepared_by: string;
   date_of_plan: string;
+  number_of_employees: string;
   purpose: string;
   period_covered: string;
   locations_covered: string;
@@ -109,7 +111,7 @@ function genDocNumber(branchName: string, count: number) {
 
 const emptyForm = (): PlanForm => ({
   title: "", document_number: "", branch_id: "", schedule_id: "", audit_period: "", plan_version: "",
-  prepared_by: "", date_of_plan: todayStr(),
+  prepared_by: "", date_of_plan: todayStr(), number_of_employees: "",
   purpose: "", period_covered: "", locations_covered: "", exclusions: "",
   team: "", departments: [], approach: [...APPROACH_ITEMS], program: {}, signature: "",
 });
@@ -129,6 +131,8 @@ export default function InternalAuditPlan() {
   const [form, setForm] = useState<PlanForm>(emptyForm());
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
   const [usedIsoScheds, setUsedIsoScheds] = useState<Set<string>>(new Set());
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const schedRef = useRef<HTMLDivElement>(null);
 
   const [viewingPlan, setViewingPlan] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -163,7 +167,7 @@ export default function InternalAuditPlan() {
       schedule_id: p.schedule_id, departments: p.departments || [], audit_team: p.audit_team,
       findings: p.findings || [], status: p.status || "Draft", created_at: p.created_at,
       audit_period: p.audit_period, plan_version: p.plan_version, prepared_by: p.prepared_by,
-      date_of_plan: p.date_of_plan,
+      date_of_plan: p.date_of_plan, number_of_employees: p.number_of_employees ?? null,
       purpose: p.purpose, period_covered: p.period_covered, locations_covered: p.locations_covered,
       exclusions: p.exclusions, approach: p.approach || [], program: p.program || [],
       signature: p.signature, pdf_url: p.pdf_url, pdf_public_id: p.pdf_public_id,
@@ -173,13 +177,22 @@ export default function InternalAuditPlan() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (schedRef.current && !schedRef.current.contains(e.target as Node)) setScheduleOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
   const selBranch = branches.find((b) => b.id === form.branch_id);
   const editingSchedId = editingPlan ? (plans.find((p) => p.id === editingPlan)?.schedule_id || null) : null;
   const occupiedScheduleIds = new Set<string>();
-  plans.forEach((p) => { if (p.schedule_id && p.id !== editingPlan) occupiedScheduleIds.add(p.schedule_id); });
-  usedIsoScheds.forEach((id) => { if (id !== editingSchedId) occupiedScheduleIds.add(id); });
+  const occupiedBy = new Map<string, string>();
+  plans.forEach((p) => { if (p.schedule_id && p.id !== editingPlan) { occupiedScheduleIds.add(p.schedule_id); occupiedBy.set(p.schedule_id, "Internal Plan"); } });
+  usedIsoScheds.forEach((id) => { if (id && id !== editingSchedId) { occupiedScheduleIds.add(id); occupiedBy.set(id, "ISO 9001 Plan"); } });
   const branchSchedules = form.branch_id
-    ? schedules.filter((s) => s.branch_id === form.branch_id && !occupiedScheduleIds.has(s.id))
+    ? schedules.filter((s) => s.branch_id === form.branch_id)
     : [];
   const selSchedule = form.schedule_id ? schedules.find((s) => s.id === form.schedule_id) : null;
 
@@ -241,6 +254,7 @@ export default function InternalAuditPlan() {
       departments: form.departments, audit_team: form.team.trim() || null,
       audit_period: form.audit_period.trim() || null, plan_version: form.plan_version.trim() || null,
       prepared_by: form.prepared_by.trim() || null, date_of_plan: form.date_of_plan || null,
+      number_of_employees: form.number_of_employees ? Number(form.number_of_employees) : null,
       purpose: form.purpose.trim() || null, period_covered: form.period_covered.trim() || null,
       locations_covered: form.locations_covered.trim() || null, exclusions: form.exclusions.trim() || null,
       approach: form.approach, program, signature: form.signature || null,
@@ -279,6 +293,7 @@ export default function InternalAuditPlan() {
       branch_id: plan.branch_id, schedule_id: plan.schedule_id || "",
       audit_period: plan.audit_period || "", plan_version: plan.plan_version || "",
       prepared_by: plan.prepared_by || "", date_of_plan: plan.date_of_plan || todayStr(),
+      number_of_employees: plan.number_of_employees != null ? String(plan.number_of_employees) : "",
       purpose: plan.purpose || "", period_covered: plan.period_covered || "",
       locations_covered: plan.locations_covered || "", exclusions: plan.exclusions || "",
       team: plan.audit_team || "", departments: plan.departments,
@@ -364,6 +379,7 @@ export default function InternalAuditPlan() {
           ["Plan Version", plan.plan_version || "—"],
           ["Prepared by", plan.prepared_by || "—"],
           ["Date of Plan", plan.date_of_plan || "—"],
+          ["Number of Employees", plan.number_of_employees != null ? String(plan.number_of_employees) : "—"],
         ],
         styles: { fontSize: 9, cellPadding: 2.5 },
         headStyles: { fillColor: [29, 78, 216] },
@@ -562,21 +578,63 @@ export default function InternalAuditPlan() {
                 <label className={labelCls}>Date of Plan *</label>
                 <input type="date" value={form.date_of_plan} onChange={(e) => setF({ date_of_plan: e.target.value })} className={inputCls} />
               </div>
+              <div>
+                <label className={labelCls}>Number of Employees</label>
+                <input type="number" min={0} value={form.number_of_employees} onChange={(e) => setF({ number_of_employees: e.target.value })} placeholder="e.g. 120" className={inputCls} />
+              </div>
             </div>
 
             <div>
               <label className={labelCls}>Scheduled Audit (required — must be on the calendar)</label>
-              <select value={form.schedule_id} onChange={(e) => onScheduleChange(e.target.value)} className={selectCls}>
-                <option value="">Select scheduled audit</option>
-                {branchSchedules.map((s) => (
-                  <option key={s.id} value={s.id} className="bg-slate-800">
-                    {s.date_from} → {s.date_to} {s.departments?.length ? `(${s.departments.length} dept)` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={schedRef}>
+                <button
+                  type="button"
+                  onClick={() => { if (form.branch_id) setScheduleOpen((v) => !v); }}
+                  className={`${selectCls} flex items-center justify-between gap-2 text-left`}
+                >
+                  <span className="truncate">
+                    {selSchedule
+                      ? `${selSchedule.date_from} → ${selSchedule.date_to}${selSchedule.departments?.length ? ` (${selSchedule.departments.length} dept)` : ""}`
+                      : "Select scheduled audit"}
+                  </span>
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                </button>
+                {scheduleOpen && (
+                  <div className="absolute z-10 mt-1 w-full bg-slate-800 border border-white/10 rounded-xl py-1 max-h-72 overflow-y-auto shadow-2xl">
+                    {branchSchedules.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-blue-200/50">No schedules for this branch yet.</p>
+                    )}
+                    {branchSchedules.map((s) => {
+                      const occ = occupiedBy.get(s.id);
+                      const sel = form.schedule_id === s.id;
+                      return (
+                        <div
+                          key={s.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => { if (!occ) { onScheduleChange(s.id); setScheduleOpen(false); } }}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !occ) { onScheduleChange(s.id); setScheduleOpen(false); } }}
+                          className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 ${occ ? "opacity-50 cursor-not-allowed" : sel ? "bg-blue-600/30 cursor-pointer" : "hover:bg-white/10 cursor-pointer"}`}
+                        >
+                          <span className="truncate">
+                            {s.date_from} → {s.date_to}{s.departments?.length ? ` (${s.departments.length} dept)` : ""}
+                          </span>
+                          {occ ? (
+                            <span className={`shrink-0 px-2 py-0.5 text-[10px] rounded-full border ${occ === "ISO 9001 Plan" ? "bg-orange-500/20 border-orange-500/40 text-orange-200" : "bg-purple-500/20 border-purple-500/40 text-purple-200"}`}>
+                              {occ}
+                            </span>
+                          ) : sel ? (
+                            <span className="shrink-0 text-[10px] text-blue-300">Selected</span>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               {!form.branch_id && <p className="text-xs text-blue-200/40 mt-1">Select a branch first to see its scheduled audits.</p>}
               {form.branch_id && branchSchedules.length === 0 && (
-                <p className="text-xs text-amber-300/70 mt-1">No free schedules for this branch. Go to Audit Schedule to schedule it on the calendar first (one plan per schedule, Internal or ISO 9001).</p>
+                <p className="text-xs text-amber-300/70 mt-1">No schedules for this branch. Go to Audit Schedule to schedule it on the calendar first.</p>
               )}
             </div>
 
@@ -760,6 +818,7 @@ export default function InternalAuditPlan() {
                 <div><span className="text-slate-500">Plan Version:</span> <span className="font-medium">{viewPlan.plan_version || "—"}</span></div>
                 <div><span className="text-slate-500">Prepared by:</span> <span className="font-medium">{viewPlan.prepared_by || "—"}</span></div>
                 <div><span className="text-slate-500">Date of Plan:</span> <span className="font-medium">{viewPlan.date_of_plan || "—"}</span></div>
+                <div><span className="text-slate-500">Number of Employees:</span> <span className="font-medium">{viewPlan.number_of_employees != null ? viewPlan.number_of_employees : "—"}</span></div>
               </div>
 
               <DocSection num="1" title="Purpose of the Audit">
