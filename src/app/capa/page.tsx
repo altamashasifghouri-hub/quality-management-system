@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import JSZip from "jszip";
 import { loadPdfImage } from "@/lib/pdf-image";
 
 interface CapaFinding {
@@ -154,6 +155,7 @@ export default function CapaPage() {
   const [message, setMessage] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
@@ -469,6 +471,78 @@ export default function CapaPage() {
     }
   }
 
+  function toggleSelect(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  function handleSelectAll() {
+    const allKeys = plans.flatMap((p) => p.findings.map((_, i) => `${p.id}::${i}`));
+    setSelectedKeys((prev) => {
+      if (allKeys.every((k) => prev.has(k))) return new Set();
+      return new Set(allKeys);
+    });
+  }
+
+  async function handleDownloadZip() {
+    const selected = plans.flatMap((p) => p.findings.map((f, i) => ({ plan: p, finding: f, planId: p.id, idx: i })))
+      .filter((t) => selectedKeys.has(`${t.planId}::${t.idx}`));
+    const withDetail = selected.filter((t) => t.finding.detail.trim());
+    if (withDetail.length === 0) return showErr("Select at least one CAPA with a description.");
+    if (generatingKey) return;
+    setGeneratingKey("zip");
+    setError("");
+
+    try {
+      const zip = new JSZip();
+      const existing = plans.flatMap((p) => p.findings).map((f) => f.ncr_number || "").filter(Boolean);
+      const ncrAssignments = new Map<string, { planId: string; idx: number; ncr: string }>();
+      const { data: authData } = await supabase.auth.getUser();
+      const userName = authData.user?.user_metadata?.full_name || settings.ceo_name || settings.hr_name || "Authorized Signatory";
+
+      for (const t of withDetail) {
+        let ncr = t.finding.ncr_number;
+        if (!ncr) {
+          ncr = genNcrNumber(t.plan.branch_name, existing);
+          existing.push(ncr);
+          ncrAssignments.set(`${t.planId}::${t.idx}`, { planId: t.planId, idx: t.idx, ncr });
+        }
+        const doc = new jsPDF();
+        await renderCapaReport(doc, t.plan, t.finding, ncr, userName, t.plan.signature || SIG_DEFAULT);
+        const blob = doc.output("blob");
+        const ab = await blob.arrayBuffer();
+        zip.file(`${sanitizeFile(t.plan.branch_name)}_CAPA_${sanitizeFile(ncr)}.pdf`, ab);
+      }
+
+      for (const [key, a] of ncrAssignments) {
+        const pi = planIndex(a.planId);
+        if (pi < 0) continue;
+        const plan = plans[pi];
+        const updated = plan.findings.map((f, i) => (i === a.idx ? { ...f, ncr_number: a.ncr } : f));
+        const err = await persistFindings(a.planId, updated);
+        if (err) return showErr(err.message);
+        setPlans((prev) => prev.map((p) => (p.id === a.planId ? { ...p, findings: updated } : p)));
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(zipBlob);
+      link.download = `CAPA_Reports_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+      showMsg(`Downloaded ${withDetail.length} CAPA report${withDetail.length !== 1 ? "s" : ""} as a ZIP file.`);
+    } catch (e: any) {
+      showErr(e?.message || "Could not create ZIP download.");
+    } finally {
+      setGeneratingKey(null);
+    }
+  }
+
   const branchGroups: { name: string; plans: CapaPlan[] }[] = [];
   const groupMap = new Map<string, CapaPlan[]>();
   plans.forEach((p) => {
@@ -479,6 +553,8 @@ export default function CapaPage() {
   groupMap.forEach((list, name) => branchGroups.push({ name, plans: list }));
 
   const inputCls = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-y";
+  const allKeys = plans.flatMap((p) => p.findings.map((_, i) => `${p.id}::${i}`));
+  const allSelected = allKeys.length > 0 && allKeys.every((k) => selectedKeys.has(k));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -502,7 +578,13 @@ export default function CapaPage() {
             <button onClick={handleGenerateAllPdf} disabled={!!generatingKey} className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
               {generatingKey === "all" ? "Compiling all CAPA reports..." : "Generate All CAPA Reports (one PDF)"}
             </button>
-            <span className="text-xs text-blue-200/40">Compiles every CAPA in the system into a single PDF and saves it to Google Drive.</span>
+            <button onClick={handleSelectAll} disabled={!!generatingKey} className="px-4 py-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors disabled:opacity-50">
+              {allSelected ? "Clear Selection" : "Select All CAPAs"}
+            </button>
+            <button onClick={handleDownloadZip} disabled={selectedKeys.size === 0 || !!generatingKey} className="px-5 py-2.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+              {generatingKey === "zip" ? "Preparing ZIP..." : `Download Selected (${selectedKeys.size}) CAPAs as ZIP`}
+            </button>
+            <span className="text-xs text-blue-200/40">Tick the checkboxes on the CAPAs you want, then download them all together as a ZIP.</span>
           </div>
         )}
 
@@ -542,6 +624,9 @@ export default function CapaPage() {
                             return (
                               <div key={`${plan.id}-${idx}`} className={`bg-white/5 backdrop-blur-sm border rounded-2xl p-5 ${f.capa_pdf_url ? "border-green-500/30" : "border-white/10"}`}>
                                 <div className="flex flex-wrap items-center gap-2 mb-4">
+                                  <label className="flex items-center cursor-pointer" title="Select to include in ZIP download">
+                                    <input type="checkbox" checked={selectedKeys.has(key)} onChange={() => toggleSelect(key)} className="w-4 h-4 accent-amber-500 cursor-pointer" />
+                                  </label>
                                   <span className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[f.type] || sevColor.Medium}`}>{f.type}</span>
                                   <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
                                   <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(idx + 1).padStart(2, "0")}</span>
