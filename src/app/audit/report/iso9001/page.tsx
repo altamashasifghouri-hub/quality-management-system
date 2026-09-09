@@ -280,15 +280,25 @@ export default function Iso9001Report() {
     showMsg("Picture added.");
   }
 
-  async function removeEvidence(planId: string, idx: number, evIdx: number) {
+async function removeEvidence(planId: string, idx: number, evIdx: number) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan) return;
     const ev = plan.findings[idx].evidence || [];
     const removedUrl = ev[evIdx] || null;
     const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: (f.evidence || []).filter((_, j) => j !== evIdx) } : f));
-    updateLocal(planId, updated);
-    await persist(planId, updated);
+    await supabase.from("audit_plans").update({ findings: updated, updated_at: new Date().toISOString() }).eq("id", planId);
+    setPlans((prev) => prev.map((p) => (p.id === planId ? { ...p, findings: updated } : p)));
     await deleteDriveFileByUrl(removedUrl);
+  }
+
+  async function handleDeletePlanReport(plan: Plan) {
+    if (!confirm("Delete this report PDF? It will also be removed from Google Drive.")) return;
+    const fileId = plan.pdf_public_id || null;
+    const { error: err } = await supabase.from("audit_plans").update({ pdf_url: null, pdf_public_id: null, updated_at: new Date().toISOString() }).eq("id", plan.id);
+    if (err) return showErr(err.message);
+    if (fileId) await deleteDriveFileByUrl(fileId);
+    setPlans((prev) => prev.map((p) => (p.id === plan.id ? { ...p, pdf_url: null, pdf_public_id: null } : p)));
+    showMsg("Report deleted. You can create it again.");
   }
 
   async function generateReportPdf(plan: Plan) {
@@ -360,6 +370,8 @@ export default function Iso9001Report() {
       line(plan.description || "No audit notes recorded.", 10, [51, 65, 85]);
 
       sectionTitle("2. Findings by Department & Clause");
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxY = pageHeight - 12;
       if (plan.findings.length === 0) {
         line("No findings recorded for this audit.", 10, [51, 65, 85]);
       } else {
@@ -369,24 +381,74 @@ export default function Iso9001Report() {
           if (!byDept.has(key)) byDept.set(key, []);
           byDept.get(key)!.push(f);
         });
-        byDept.forEach((list, dept) => {
-          if (y > 740) { doc.addPage(); y = margin; }
+        const lineH = 4.2;
+        const evThumbW = 30;
+        const evThumbMaxH = 22;
+        const evGap = 6;
+        const evPerRow = Math.max(1, Math.floor((maxWidth - 16 + evGap) / (evThumbW + evGap)));
+        let fi = 0;
+        for (const [dept, list] of byDept) {
           sectionTitle(`Department: ${dept}`);
-          if (y > 740) { doc.addPage(); y = margin; }
-          autoTable(doc, {
-            startY: y,
-            theme: "grid",
-            head: [["#", "Clause", "Severity", "Detail", "Recommendation", "Status"]],
-            body: list.map((f, i) => [
-              String(i + 1), f.clause || "—", f.type, f.detail, f.recommendation || "—",
-              f.resolved === true ? "Resolved" : "Open",
-            ]),
-            styles: { fontSize: 7.5, cellPadding: 2 },
-            headStyles: { fillColor: [29, 78, 216] },
-            columnStyles: { 3: { cellWidth: 55 }, 4: { cellWidth: 55 } },
-          });
-          y = (doc as any).lastAutoTable.finalY + 10;
-        });
+          for (const f of list) {
+            const evs = f.evidence || [];
+            doc.setFontSize(9.5);
+            const attr = `${String(fi + 1).padStart(2, "0")}   |   Clause ${f.clause || "—"}   |   ${f.type}   |   ${f.resolved === true ? "Resolved" : "Open"}`;
+            const detailWrapped = doc.splitTextToSize(f.detail, maxWidth - 16);
+            const recWrapped = f.recommendation ? doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth - 16) : [];
+            const evRowCount = evs.length === 0 ? 0 : Math.ceil(evs.length / evPerRow);
+            const evBlockH = evRowCount ? evRowCount * (evThumbMaxH + evGap) + 4 : 0;
+            const cardH = 11 + detailWrapped.length * lineH + (recWrapped.length ? recWrapped.length * lineH + 3 : 0) + evBlockH;
+            if (y + cardH > maxY) { doc.addPage(); y = margin; }
+            const cardY = y;
+            doc.setFillColor(248, 250, 252);
+            doc.rect(margin, cardY, maxWidth, cardH, "F");
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.2);
+            doc.rect(margin, cardY, maxWidth, cardH, "S");
+            let ty = cardY + 6;
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9.5);
+            doc.setTextColor(29, 78, 216);
+            doc.text(attr, margin + 6, ty);
+            doc.setFont("helvetica", "normal");
+            ty += 5;
+            doc.setTextColor(30, 41, 59);
+            doc.text(detailWrapped, margin + 6, ty);
+            ty += detailWrapped.length * lineH;
+            if (recWrapped.length) {
+              ty += 2;
+              doc.setTextColor(51, 65, 85);
+              doc.text(recWrapped, margin + 6, ty);
+              ty += recWrapped.length * lineH;
+            }
+            if (evRowCount) {
+              ty += 3;
+              let ex = margin + 6;
+              let ey = ty;
+              let placed = 0;
+              for (const url of evs) {
+                if (placed > 0 && placed % evPerRow === 0) { ex = margin + 6; ey += evThumbMaxH + evGap; }
+                let dataUrl = "";
+                try { dataUrl = await loadImageData(url); } catch { placed++; continue; }
+                let dw = 1; let dh = 1;
+                try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* skip */ }
+                let w = evThumbW; let h = (evThumbW * dh) / (dw || 1);
+                if (h > evThumbMaxH) { h = evThumbMaxH; w = (h * dw) / (dh || 1); }
+                const iy = ey + (evThumbMaxH - h) / 2;
+                doc.addImage(dataUrl, "JPEG", ex, iy, w, h);
+                doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
+                doc.rect(ex, iy, w, h);
+                doc.link(ex, iy, w, h, { url: zoomUrl(url) });
+                doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
+                doc.text("Click for full view", ex + w / 2, iy + h + 2.5, { align: "center" });
+                ex += evThumbW + evGap;
+                placed++;
+              }
+            }
+            y = cardY + cardH + 7;
+            fi++;
+          }
+        }
       }
 
       sectionTitle("3. Overall Result");
@@ -407,53 +469,6 @@ export default function Iso9001Report() {
         const dataUrl = await loadImageData(sigUrl);
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
-
-      sectionTitle("5. Evidence Photographs");
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const maxY = pageHeight - 12;
-      const evidenceFindings = plan.findings.filter((f) => f.evidence && f.evidence.length > 0);
-      if (evidenceFindings.length === 0) {
-        line("No evidence photographs recorded for this audit.", 10, [51, 65, 85]);
-      } else {
-        const thumbW = 45;
-        const thumbMaxH = 34;
-        const gapX = 12;
-        let rowY = y;
-        let col = 0;
-        for (let fi = 0; fi < plan.findings.length; fi++) {
-          const f = plan.findings[fi];
-          const evs = f.evidence || [];
-          if (evs.length === 0) continue;
-          if (rowY + 8 > maxY) { doc.addPage(); rowY = margin; col = 0; }
-          doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(15, 23, 42);
-          doc.text(`Finding #${String(fi + 1).padStart(2, "0")} — ${f.department || "General"}${f.clause ? ` · Clause ${f.clause}` : ""}${f.type ? ` (${f.type})` : ""}`, margin, rowY);
-          doc.setFont("helvetica", "normal");
-          rowY += 6;
-          for (const url of evs) {
-            if (col >= 2) { rowY += thumbMaxH + 15; col = 0; }
-            if (rowY + thumbMaxH + 9 > maxY) { doc.addPage(); rowY = margin; col = 0; }
-            let dataUrl = "";
-            try { dataUrl = await loadImageData(url); } catch { col++; continue; }
-            let dw = 1; let dh = 1;
-            try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* skip */ }
-            let w = thumbW; let h = (thumbW * dh) / (dw || 1);
-            if (h > thumbMaxH) { h = thumbMaxH; w = (h * dw) / (dh || 1); }
-            const x = col === 0 ? margin : margin + thumbW + gapX;
-            const ix = x + (thumbW - w) / 2;
-            doc.setFillColor(241, 245, 249);
-            doc.rect(ix - 1, rowY - 1, w + 2, h + 2, "F");
-            doc.addImage(dataUrl, "JPEG", ix, rowY, w, h);
-            doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
-            doc.rect(ix, rowY, w, h);
-            doc.link(ix, rowY, w, h, { url: zoomUrl(url) });
-            doc.setFontSize(7); doc.setTextColor(100, 116, 139);
-            doc.text("Click to view full image", x + thumbW / 2, rowY + h + 4, { align: "center" });
-            col++;
-          }
-          rowY += thumbMaxH + 9;
-        }
-        y = rowY;
-      }
 
       const blob = doc.output("blob");
       const formData = new FormData();
@@ -652,7 +667,10 @@ export default function Iso9001Report() {
                                         </div>
                                         <div className="ml-auto flex items-center gap-2">
                                           {plan.pdf_url ? (
-                                            <a href={plan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">View PDF</a>
+                                            <>
+                                              <a href={plan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">View PDF</a>
+                                              <button onClick={() => handleDeletePlanReport(plan)} className="px-3 py-1.5 text-xs rounded-lg bg-red-600/80 hover:bg-red-600 text-white">Delete Report</button>
+                                            </>
                                           ) : (
                                             <button onClick={() => generateReportPdf(plan)} disabled={pdfSaving} className="px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white transition-colors">
                                               {pdfSaving ? "Saving..." : "Save Report PDF to Drive"}

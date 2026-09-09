@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
@@ -257,6 +257,11 @@ export default function InternalAuditReport() {
     });
   }
 
+  function createReportForPlan(plan: PlanRow) {
+    setShowForm(true);
+    onPlanChange(plan.id);
+  }
+
   async function handleSaveReport(e: React.FormEvent) {
     e.preventDefault();
     if (!form.audit_id) return showErr("Select an audit plan.");
@@ -496,20 +501,75 @@ export default function InternalAuditReport() {
       (plan?.approach.length ? plan.approach : []).forEach(bullet);
 
       sectionTitle("3. Audit Findings & Recommendations");
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxY = pageHeight - 12;
       if (report.findings.length === 0) {
         line("No findings recorded for this audit.", 10, [51, 65, 85]);
       } else {
-        if (y > 730) { doc.addPage(); y = margin; }
-        autoTable(doc, {
-          startY: y,
-          theme: "grid",
-          head: [["Ref", "Department", "Risk Rating", "Finding / Recommendation"]],
-          body: report.findings.map((f, i) => [String(i + 1).padStart(2, "0"), f.department, f.type, f.detail]),
-          styles: { fontSize: 9, cellPadding: 2.5 },
-          headStyles: { fillColor: [29, 78, 216] },
-          columnStyles: { 0: { cellWidth: 14 }, 3: { cellWidth: 90 } },
-        });
-        y = (doc as any).lastAutoTable.finalY + 12;
+        const lineH = 4.2;
+        const evThumbW = 30;
+        const evThumbMaxH = 22;
+        const evGap = 6;
+        const evPerRow = Math.max(1, Math.floor((maxWidth - 16 + evGap) / (evThumbW + evGap)));
+        for (let i = 0; i < report.findings.length; i++) {
+          const f = report.findings[i];
+          const evs = f.evidence || [];
+          doc.setFontSize(9.5);
+          const attr = `${String(i + 1).padStart(2, "0")}   |   ${f.department}   |   ${f.type}`;
+          const detailWrapped = doc.splitTextToSize(f.detail, maxWidth - 16);
+          const recWrapped = f.recommendation ? doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth - 16) : [];
+          const evRowCount = evs.length === 0 ? 0 : Math.ceil(evs.length / evPerRow);
+          const evBlockH = evRowCount ? evRowCount * (evThumbMaxH + evGap) + 4 : 0;
+          const cardH = 11 + detailWrapped.length * lineH + (recWrapped.length ? recWrapped.length * lineH + 3 : 0) + evBlockH;
+          if (y + cardH > maxY) { doc.addPage(); y = margin; }
+          const cardY = y;
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, cardY, maxWidth, cardH, "F");
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.2);
+          doc.rect(margin, cardY, maxWidth, cardH, "S");
+          let ty = cardY + 6;
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9.5);
+          doc.setTextColor(29, 78, 216);
+          doc.text(attr, margin + 6, ty);
+          doc.setFont("helvetica", "normal");
+          ty += 5;
+          doc.setTextColor(30, 41, 59);
+          doc.text(detailWrapped, margin + 6, ty);
+          ty += detailWrapped.length * lineH;
+          if (recWrapped.length) {
+            ty += 2;
+            doc.setTextColor(51, 65, 85);
+            doc.text(recWrapped, margin + 6, ty);
+            ty += recWrapped.length * lineH;
+          }
+          if (evRowCount) {
+            ty += 3;
+            let ex = margin + 6;
+            let ey = ty;
+            let placed = 0;
+            for (const url of evs) {
+              if (placed > 0 && placed % evPerRow === 0) { ex = margin + 6; ey += evThumbMaxH + evGap; }
+              let dataUrl = "";
+              try { dataUrl = await loadImageData(url); } catch { placed++; continue; }
+              let dw = 1; let dh = 1;
+              try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* skip */ }
+              let w = evThumbW; let h = (evThumbW * dh) / (dw || 1);
+              if (h > evThumbMaxH) { h = evThumbMaxH; w = (h * dw) / (dh || 1); }
+              const iy = ey + (evThumbMaxH - h) / 2;
+              doc.addImage(dataUrl, "JPEG", ex, iy, w, h);
+              doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
+              doc.rect(ex, iy, w, h);
+              doc.link(ex, iy, w, h, { url: zoomUrl(url) });
+              doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
+              doc.text("Click for full view", ex + w / 2, iy + h + 2.5, { align: "center" });
+              ex += evThumbW + evGap;
+              placed++;
+            }
+          }
+          y = cardY + cardH + 7;
+        }
       }
 
       sectionTitle("4. Positive Observations / Good Practices");
@@ -570,53 +630,6 @@ export default function InternalAuditReport() {
         const dataUrl = await loadImageData(sigUrl);
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
-
-      sectionTitle("9. Evidence Photographs");
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const maxY = pageHeight - 12;
-      const evidenceFindings = report.findings.filter((f) => f.evidence && f.evidence.length > 0);
-      if (evidenceFindings.length === 0) {
-        line("No evidence photographs recorded for this audit.", 10, [51, 65, 85]);
-      } else {
-        const thumbW = 45;
-        const thumbMaxH = 34;
-        const gapX = 12;
-        let rowY = y;
-        let col = 0;
-        for (let fi = 0; fi < report.findings.length; fi++) {
-          const f = report.findings[fi];
-          const evs = f.evidence || [];
-          if (evs.length === 0) continue;
-          if (rowY + 8 > maxY) { doc.addPage(); rowY = margin; col = 0; }
-          doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(15, 23, 42);
-          doc.text(`Finding #${String(fi + 1).padStart(2, "0")} — ${f.department}${f.type ? ` (${f.type})` : ""}`, margin, rowY);
-          doc.setFont("helvetica", "normal");
-          rowY += 6;
-          for (const url of evs) {
-            if (col >= 2) { rowY += thumbMaxH + 15; col = 0; }
-            if (rowY + thumbMaxH + 9 > maxY) { doc.addPage(); rowY = margin; col = 0; }
-            let dataUrl = "";
-            try { dataUrl = await loadImageData(url); } catch { col++; continue; }
-            let dw = 1; let dh = 1;
-            try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* skip */ }
-            let w = thumbW; let h = (thumbW * dh) / (dw || 1);
-            if (h > thumbMaxH) { h = thumbMaxH; w = (h * dw) / (dh || 1); }
-            const x = col === 0 ? margin : margin + thumbW + gapX;
-            const ix = x + (thumbW - w) / 2;
-            doc.setFillColor(241, 245, 249);
-            doc.rect(ix - 1, rowY - 1, w + 2, h + 2, "F");
-            doc.addImage(dataUrl, "JPEG", ix, rowY, w, h);
-            doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
-            doc.rect(ix, rowY, w, h);
-            doc.link(ix, rowY, w, h, { url: zoomUrl(url) });
-            doc.setFontSize(7); doc.setTextColor(100, 116, 139);
-            doc.text("Click to view full image", x + thumbW / 2, rowY + h + 4, { align: "center" });
-            col++;
-          }
-          rowY += thumbMaxH + 9;
-        }
-        y = rowY;
-      }
 
       setPdfSaving(true);
       try {
@@ -683,7 +696,7 @@ export default function InternalAuditReport() {
           </div>
           <button
             onClick={() => { setShowForm((v) => !v); setEditingReportId(null); setForm(emptyForm()); }}
-            className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
           >
             {showForm ? "Cancel" : "+ New Report"}
           </button>
@@ -758,7 +771,7 @@ export default function InternalAuditReport() {
                     key={op.value}
                     type="button"
                     onClick={() => setF({ overall_opinion: op.value })}
-                    className={`flex-1 px-4 py-3 text-sm rounded-xl border transition-colors text-left ${form.overall_opinion === op.value ? "bg-purple-600/30 border-purple-500/40 text-white" : "bg-white/5 border-white/10 text-blue-200/60 hover:border-white/30"}`}
+                    className={`flex-1 px-4 py-3 text-sm rounded-xl border transition-colors text-left ${form.overall_opinion === op.value ? "bg-blue-600/30 border-blue-500/40 text-white" : "bg-white/5 border-white/10 text-blue-200/60 hover:border-white/30"}`}
                   >
                     <span className="block font-medium">{op.value}</span>
                     <span className="block text-xs text-blue-200/50 mt-1">{op.desc}</span>
@@ -835,7 +848,7 @@ export default function InternalAuditReport() {
             </div>
 
             <div className="flex gap-2">
-              <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+              <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
                 {saving ? "Saving..." : editingReportId ? "Save Changes" : "Create Report"}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setEditingReportId(null); }} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium">Cancel</button>
@@ -845,34 +858,47 @@ export default function InternalAuditReport() {
 
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
-        ) : reports.length === 0 ? (
-          <p className="text-blue-200/40 text-center py-16">No audit reports yet. Create a report from an audit plan.</p>
+        ) : plans.length === 0 ? (
+          <p className="text-blue-200/40 text-center py-16">No audit plans yet. Create an audit plan first, then a report.</p>
         ) : (
           <div className="space-y-4">
-            {reports.map((report) => {
-              const branch = branchById.get(report.branch_id || "");
-              const plan = planById.get(report.audit_id);
-              const s = report.summary && Object.keys(report.summary).length ? report.summary : computeSummary(report.findings);
+            {plans.map((plan) => {
+              const report = reports.find((r) => r.audit_id === plan.id);
+              const branch = branchById.get(plan.branch_id);
+              const s = report ? (report.summary && Object.keys(report.summary).length ? report.summary : computeSummary(report.findings)) : computeSummary(plan.findings);
+              const findings = report ? report.findings : plan.findings;
               return (
-                <div key={report.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                <div key={plan.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
                   <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-lg font-semibold text-white">{report.title}</h3>
-                        {report.overall_opinion && (
+                        <h3 className="text-lg font-semibold text-white">{report?.title || plan.title}</h3>
+                        {report ? (
                           <span className={`px-2 py-0.5 text-xs rounded-full ${report.overall_opinion === "Satisfactory" ? "bg-green-500/20 text-green-300" : report.overall_opinion === "Needs Improvement" ? "bg-amber-500/20 text-amber-300" : "bg-red-500/20 text-red-300"}`}>{report.overall_opinion}</span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">No report</span>
                         )}
-                        <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full">{branch?.name || plan?.branch_name || "—"}</span>
+                        <span className="text-xs text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded-full">{branch?.name || plan.branch_name || "—"}</span>
                       </div>
                       <p className="text-xs text-blue-200/40 mt-2">
-                        {report.document_number && <span>{report.document_number} · </span>}
-                        {report.report_date && <span>Report Date {formatDDMMYYYY(report.report_date)} · </span>}
-                        {report.prepared_by && <span>Prepared by {report.prepared_by}</span>}
+                        {plan.document_number && <span>{plan.document_number} · </span>}
+                        {report ? (
+                          <>{report.report_date && <span>Report Date {formatDDMMYYYY(report.report_date)} · </span>}{report.prepared_by && <span>Prepared by {report.prepared_by}</span>}</>
+                        ) : (
+                          <>{plan.audit_period && <span>{plan.audit_period} · </span>}Report not created yet — click Create Report.</>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-blue-200/50">{report.findings.length} finding{report.findings.length !== 1 ? "s" : ""} (Critical {s.Critical || 0} · High {s.High || 0})</span>
-                      <button onClick={() => { setViewingReportId(report.id); setEditingReportId(null); }} className="px-3 py-1.5 text-xs rounded-lg bg-purple-600 hover:bg-purple-500 text-white">Open</button>
+                      <span className="text-xs text-blue-200/50">{findings.length} finding{findings.length !== 1 ? "s" : ""} (Critical {s.Critical || 0} · High {s.High || 0})</span>
+                      {report ? (
+                        <>
+                          <button onClick={() => { setViewingReportId(report.id); setEditingReportId(null); }} className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">Open Report</button>
+                          <button onClick={() => { if (confirm("Delete this report? The saved PDF will also be removed from Google Drive.")) handleDeleteReport(report.id); }} className="px-3 py-1.5 text-xs rounded-lg bg-red-600/80 hover:bg-red-600 text-white">Delete</button>
+                        </>
+                      ) : (
+                        <button onClick={() => createReportForPlan(plan)} className="px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-500 text-white">+ Create Report</button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -903,7 +929,7 @@ export default function InternalAuditReport() {
             </div>
 
             <div className="bg-white text-slate-900 rounded-2xl p-5 sm:p-10 shadow-2xl overflow-x-auto">
-              <div className="text-center border-b-2 border-purple-600 pb-4 mb-6">
+              <div className="text-center border-b-2 border-blue-600 pb-4 mb-6">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={LOGO} alt="Brand logo" className="h-16 mx-auto mb-3" />
                 <h1 className="text-2xl font-bold">INTERNAL AUDIT REPORT</h1>
@@ -940,7 +966,7 @@ export default function InternalAuditReport() {
                 <p className="text-sm mt-1"><span className="font-medium">Locations Covered:</span></p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {(viewingReport.locations_covered || "").split(",").map((s) => s.trim()).filter(Boolean).map((loc) => (
-                    <span key={loc} className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-800">{loc}</span>
+                    <span key={loc} className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800">{loc}</span>
                   ))}
                   {!(viewingReport.locations_covered || "").split(",").some((s) => s.trim()) && <span className="text-sm text-slate-500">—</span>}
                 </div>
@@ -965,12 +991,29 @@ export default function InternalAuditReport() {
                     </thead>
                     <tbody>
                       {viewingReport.findings.map((f, i) => (
-                        <tr key={i} className="odd:bg-slate-100">
-                          <td className="border border-slate-300 px-3 py-1.5">{String(i + 1).padStart(2, "0")}</td>
-                          <td className="border border-slate-300 px-3 py-1.5">{f.department}</td>
-                          <td className="border border-slate-300 px-3 py-1.5">{f.type}</td>
-                          <td className="border border-slate-300 px-3 py-1.5">{f.detail}</td>
-                        </tr>
+                        <Fragment key={i}>
+                          <tr className="odd:bg-slate-100">
+                            <td className="border border-slate-300 px-3 py-1.5">{String(i + 1).padStart(2, "0")}</td>
+                            <td className="border border-slate-300 px-3 py-1.5">{f.department}</td>
+                            <td className="border border-slate-300 px-3 py-1.5">{f.type}</td>
+                            <td className="border border-slate-300 px-3 py-1.5">{f.detail}</td>
+                          </tr>
+                          {f.evidence && f.evidence.length > 0 && (
+                            <tr>
+                              <td colSpan={4} className="border border-slate-300 px-3 py-2 bg-slate-50">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <span className="text-xs text-slate-500 font-medium">Evidence:</span>
+                                  {f.evidence.map((url, j) => (
+                                    <a key={j} href={url} target="_blank" rel="noopener noreferrer" className="block">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={url} alt={`Evidence ${j + 1}`} className="h-24 max-w-[180px] object-cover rounded border border-slate-300 shadow-sm hover:opacity-80 transition-opacity" />
+                                    </a>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -990,10 +1033,10 @@ export default function InternalAuditReport() {
               <DocSection num="5" title="Summary of Findings by Risk Rating">
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="bg-purple-600 text-white">
-                      <th className="border border-purple-600 px-3 py-1.5 text-left font-medium">Risk Rating</th>
-                      <th className="border border-purple-600 px-3 py-1.5 text-left font-medium">Number of Findings</th>
-                      <th className="border border-purple-600 px-3 py-1.5 text-left font-medium">References</th>
+                    <tr className="bg-blue-600 text-white">
+                      <th className="border border-blue-600 px-3 py-1.5 text-left font-medium">Risk Rating</th>
+                      <th className="border border-blue-600 px-3 py-1.5 text-left font-medium">Number of Findings</th>
+                      <th className="border border-blue-600 px-3 py-1.5 text-left font-medium">References</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1033,9 +1076,9 @@ export default function InternalAuditReport() {
               <DocSection num="8" title="Distribution List">
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="bg-purple-600 text-white">
-                      <th className="border border-purple-600 px-3 py-1.5 text-left font-medium">Role</th>
-                      <th className="border border-purple-600 px-3 py-1.5 text-left font-medium">Name</th>
+                    <tr className="bg-blue-600 text-white">
+                      <th className="border border-blue-600 px-3 py-1.5 text-left font-medium">Role</th>
+                      <th className="border border-blue-600 px-3 py-1.5 text-left font-medium">Name</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1081,7 +1124,7 @@ export default function InternalAuditReport() {
 function DocSection({ num, title, children }: { num: string; title: string; children: React.ReactNode }) {
   return (
     <div className="mb-6">
-      <h3 className="font-bold text-purple-600 border-b border-slate-200 pb-1 mb-2">{num}. {title}</h3>
+      <h3 className="font-bold text-blue-600 border-b border-slate-200 pb-1 mb-2">{num}. {title}</h3>
       {children}
     </div>
   );
