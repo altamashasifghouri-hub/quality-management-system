@@ -13,7 +13,7 @@ interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; branch_manager: string | null; locations: string[] | null; departments: Department[]; }
 interface AuditSchedule { id: string; branch_id: string; date_from: string; date_to: string; departments: string[]; }
 interface SettingsRow { id: number; hr_name: string; ceo_name: string; }
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; timeline?: number; }
 
 interface PlanRow {
   id: string;
@@ -79,6 +79,16 @@ interface ReportForm {
 
 const LOGO = "/logo.jpg";
 const SIG_DEFAULT = "/signature.png";
+
+const TIMELINE_DAYS: Record<string, number> = { Critical: 2, High: 4, Medium: 7, Low: 10 };
+
+function addDays(dateStr: string | null, days: number): string {
+  const d = new Date();
+  const m = (dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) d.setFullYear(+m[1], +m[2] - 1, +m[3]);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const OPINIONS = [
   { value: "Satisfactory", desc: "Controls are adequate and effective. No significant control weaknesses identified." },
@@ -379,12 +389,12 @@ export default function InternalAuditReport() {
 
       try {
         const logoUrl = await loadImageData(LOGO);
-        const logoW = 40;
-        const logoH = 28;
+        const logoW = 48;
+        const logoH = 34;
         doc.addImage(logoUrl, "JPEG", (pageWidth - logoW) / 2, y, logoW, logoH);
       } catch { /* logo unavailable */ }
 
-      y += 42;
+      y += 48;
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
       doc.text("INTERNAL AUDIT REPORT", pageWidth / 2, y, { align: "center" });
@@ -459,13 +469,6 @@ export default function InternalAuditReport() {
         columnStyles: { 0: { fontStyle: "bold", cellWidth: 55 } },
       });
       y = (doc as any).lastAutoTable.finalY + 8;
-      doc.setFontSize(9); doc.setTextColor(51, 65, 85);
-      doc.text("Signature:", margin, y);
-      try {
-        const dataUrl = await loadImageData(sigUrl);
-        doc.addImage(dataUrl, "JPEG", margin + 22, y - 4, 40, 18);
-      } catch { /* signature unavailable */ }
-      y += 12;
 
       sectionTitle("1. Executive Summary");
       doc.setFontSize(10);
@@ -525,7 +528,7 @@ export default function InternalAuditReport() {
           const f = report.findings[i];
           const evs = f.evidence || [];
           doc.setFontSize(10);
-          const attr = `${String(i + 1).padStart(2, "0")}   |   ${f.department}   |   ${f.type}`;
+          const attr = `NCR - QA-${String(i + 1).padStart(2, "0")}, Department: ${f.department}, Risk Ranking: ${f.type}`;
           if (y + 8 > maxY) { doc.addPage(); y = margin; }
           doc.setFont("helvetica", "bold");
           doc.setTextColor(29, 78, 216);
@@ -571,6 +574,12 @@ export default function InternalAuditReport() {
             }
             y = ey + evThumbMaxH + 8;
           }
+          const fDays = f.timeline ?? TIMELINE_DAYS[f.type] ?? 7;
+          y += 3;
+          if (y + 5 > maxY) { doc.addPage(); y = margin; }
+          doc.setFontSize(9.5); doc.setTextColor(100, 116, 139);
+          doc.text(`Timeline: Required by ${formatDDMMYYYY(addDays(report.report_date, fDays))} (${fDays} days)`, margin, y);
+          y += 5;
           y += 8;
           if (y <= maxY - 4) {
             doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.15);

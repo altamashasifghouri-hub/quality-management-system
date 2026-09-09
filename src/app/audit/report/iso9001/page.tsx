@@ -9,12 +9,29 @@ import { jsPDF } from "jspdf";
 import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
 
-interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; timeline?: number; }
 interface Schedule { id: string; branch_id: string; branch_name?: string; branch_manager?: string | null; date_from: string; date_to: string; departments: string[]; }
 interface Plan { id: string; schedule_id: string; title: string; criteria: string; description: string | null; findings: Finding[]; overall_result: string; created_at: string; branch_name?: string; document_number?: string | null; date_of_plan?: string | null; prepared_by?: string | null; signature?: string | null; pdf_url?: string | null; pdf_public_id?: string | null; }
 
 const SIG_DEFAULT = "/signature.png";
 const LOGO = "/logo.jpg";
+
+const TIMELINE_DAYS: Record<string, number> = { Critical: 2, High: 4, Medium: 7, Low: 10 };
+
+function addDays(dateStr: string | null, days: number): string {
+  const d = new Date();
+  const m = (dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) d.setFullYear(+m[1], +m[2] - 1, +m[3]);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatDDMMYYYY(dateStr: string | null) {
+  if (!dateStr) return "—";
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return dateStr;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
 
 function sanitizeFile(name: string) {
   return name.replace(/[^a-zA-Z0-9]+/g, "_");
@@ -317,12 +334,12 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
 
       try {
         const logoUrl = await loadImageData(LOGO);
-        const logoW = 40;
-        const logoH = 28;
+        const logoW = 48;
+        const logoH = 34;
         doc.addImage(logoUrl, "JPEG", (pageWidth - logoW) / 2, y, logoW, logoH);
       } catch { /* logo unavailable */ }
 
-      y += 42;
+      y += 48;
       doc.setFontSize(16);
       doc.setTextColor(15, 23, 42);
       doc.text("ISO 9001 AUDIT REPORT", pageWidth / 2, y, { align: "center" });
@@ -396,7 +413,7 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
           for (const f of list) {
             const evs = f.evidence || [];
             doc.setFontSize(10);
-            const attr = `${String(fi + 1).padStart(2, "0")}   |   Clause ${f.clause || "—"}   |   ${f.type}   |   ${f.resolved === true ? "Resolved" : "Open"}`;
+            const attr = `NCR - QA-${String(fi + 1).padStart(2, "0")}, Clause: ${f.clause || "—"}, Department: ${f.department}, Risk Ranking: ${f.type}, Status: ${f.resolved === true ? "Resolved" : "Open"}`;
             if (y + 8 > maxY) { doc.addPage(); y = margin; }
             doc.setFont("helvetica", "bold");
             doc.setTextColor(29, 78, 216);
@@ -440,9 +457,15 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
                 ex += evThumbW + evGap;
                 placed++;
               }
-              y = ey + evThumbMaxH + 8;
-            }
-            y += 8;
+y = ey + evThumbMaxH + 8;
+              }
+              const fDays = f.timeline ?? TIMELINE_DAYS[f.type] ?? 7;
+              y += 3;
+              if (y + 5 > maxY) { doc.addPage(); y = margin; }
+              doc.setFontSize(9.5); doc.setTextColor(100, 116, 139);
+              doc.text(`Timeline: Required by ${formatDDMMYYYY(addDays(plan.date_of_plan || plan.created_at, fDays))} (${fDays} days)`, margin, y);
+              y += 5;
+              y += 8;
             if (y <= maxY - 4) {
               doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.15);
               doc.line(margin, y, pageWidth - margin, y);
