@@ -157,6 +157,17 @@ export default function AuditFindings() {
     await persist(planId, updated);
   }
 
+  async function changeDepartment(planId: string, idx: number, dept: string) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    if (!dept.trim()) return;
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, department: dept.trim() } : f));
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+    const deptMap = { ...deptOptions, [planId]: [...new Set([...(deptOptions[planId] || []), dept.trim()])] };
+    setDeptOptions(deptMap);
+  }
+
   async function addEvidence(planId: string, idx: number, file: File | null) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan || !file) return;
@@ -366,7 +377,18 @@ export default function AuditFindings() {
                                               >
                                                 {TIMELINE_OPTIONS.map((d) => <option key={d} value={d} className="bg-slate-900">Timeline: {d} days</option>)}
                                               </select>
-                                              <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
+                                              {deptOptions[plan.id] && deptOptions[plan.id].length > 0 ? (
+                                                <select
+                                                  value={f.department}
+                                                  onChange={(e) => changeDepartment(plan.id, i, e.target.value)}
+                                                  className="px-2 py-1 text-xs rounded-lg border bg-slate-900 text-purple-200 border-purple-500/30 [color-scheme:dark] max-w-[180px]"
+                                                  title="Change department"
+                                                >
+                                                  {deptOptions[plan.id].map((d) => <option key={d} value={d} className="bg-slate-900">{d}</option>)}
+                                                </select>
+                                              ) : (
+                                                <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
+                                              )}
                                               {f.clause && <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">Clause {f.clause}</span>}
                                               <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(i + 1).padStart(2, "0")}</span>
                                             </div>
