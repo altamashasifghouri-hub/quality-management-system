@@ -373,6 +373,8 @@ export default function InternalAuditReport() {
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 20;
       const maxWidth = pageWidth - margin * 2;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxY = pageHeight - 12;
       let y = margin;
 
       try {
@@ -396,12 +398,17 @@ export default function InternalAuditReport() {
         doc.setFontSize(size);
         doc.setTextColor(color[0], color[1], color[2]);
         const lines = doc.splitTextToSize(t, maxWidth);
-        doc.text(lines, margin, y);
-        y += (lines.length * size * 0.45) + gap;
+        const lineAdv = size * 0.5;
+        lines.forEach((ln: string) => {
+          if (y + lineAdv > maxY) { doc.addPage(); y = margin; }
+          doc.text(ln, margin, y);
+          y += lineAdv;
+        });
+        y += gap;
         return y;
       };
       const sectionTitle = (t: string) => {
-        if (y > 700) { doc.addPage(); y = margin; }
+        if (y > maxY - 24) { doc.addPage(); y = margin; }
         doc.setFontSize(12);
         doc.setTextColor(29, 78, 216);
         doc.text(t, margin, y);
@@ -413,9 +420,12 @@ export default function InternalAuditReport() {
       const bullet = (t: string) => {
         doc.setFontSize(10); doc.setTextColor(30, 41, 59);
         const wrapped = doc.splitTextToSize(`• ${t}`, maxWidth);
-        if (y + wrapped.length * 4.5 + 4 > 790) { doc.addPage(); y = margin; }
-        doc.text(wrapped, margin, y);
-        y += wrapped.length * 4.5 + 2;
+        wrapped.forEach((ln: string) => {
+          if (y + 4.5 > maxY) { doc.addPage(); y = margin; }
+          doc.text(ln, margin, y);
+          y += 4.5;
+        });
+        y += 2;
       };
       const opinionLine = (checked: boolean, value: string, desc?: string) => {
         doc.setFontSize(10);
@@ -423,9 +433,12 @@ export default function InternalAuditReport() {
         const mark = checked ? "[X]" : "[ ]";
         const text = `${mark} ${value}${desc ? ` — ${desc}` : ""}`;
         const wrapped = doc.splitTextToSize(text, maxWidth);
-        if (y + wrapped.length * 4.5 + 3 > 790) { doc.addPage(); y = margin; }
-        doc.text(wrapped, margin, y);
-        y += wrapped.length * 4.5 + 3;
+        wrapped.forEach((ln: string) => {
+          if (y + 4.5 > maxY) { doc.addPage(); y = margin; }
+          doc.text(ln, margin, y);
+          y += 4.5;
+        });
+        y += 3;
       };
 
       autoTable(doc, {
@@ -501,56 +514,45 @@ export default function InternalAuditReport() {
       (plan?.approach.length ? plan.approach : []).forEach(bullet);
 
       sectionTitle("3. Audit Findings & Recommendations");
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const maxY = pageHeight - 12;
       if (report.findings.length === 0) {
         line("No findings recorded for this audit.", 10, [51, 65, 85]);
       } else {
-        const lineH = 4.2;
-        const evThumbW = 44;
-        const evThumbMaxH = 34;
-        const evGap = 6;
-        const evPerRow = Math.max(1, Math.floor((maxWidth - 16 + evGap) / (evThumbW + evGap)));
+        const evThumbW = 56;
+        const evThumbMaxH = 44;
+        const evGap = 8;
+        const evPerRow = Math.max(1, Math.floor((maxWidth + evGap) / (evThumbW + evGap)));
         for (let i = 0; i < report.findings.length; i++) {
           const f = report.findings[i];
           const evs = f.evidence || [];
-          doc.setFontSize(9.5);
+          doc.setFontSize(10);
           const attr = `${String(i + 1).padStart(2, "0")}   |   ${f.department}   |   ${f.type}`;
-          const detailWrapped = doc.splitTextToSize(f.detail, maxWidth - 16);
-          const recWrapped = f.recommendation ? doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth - 16) : [];
-          const evRowCount = evs.length === 0 ? 0 : Math.ceil(evs.length / evPerRow);
-          const evBlockH = evRowCount ? evRowCount * (evThumbMaxH + evGap) + 4 : 0;
-          const cardH = 11 + detailWrapped.length * lineH + (recWrapped.length ? recWrapped.length * lineH + 3 : 0) + evBlockH;
-          if (y + cardH > maxY) { doc.addPage(); y = margin; }
-          const cardY = y;
-          doc.setFillColor(248, 250, 252);
-          doc.rect(margin, cardY, maxWidth, cardH, "F");
-          doc.setDrawColor(226, 232, 240);
-          doc.setLineWidth(0.2);
-          doc.rect(margin, cardY, maxWidth, cardH, "S");
-          let ty = cardY + 6;
+          if (y + 8 > maxY) { doc.addPage(); y = margin; }
           doc.setFont("helvetica", "bold");
-          doc.setFontSize(9.5);
           doc.setTextColor(29, 78, 216);
-          doc.text(attr, margin + 6, ty);
+          doc.text(attr, margin, y);
           doc.setFont("helvetica", "normal");
-          ty += 5;
+          y += 6;
+          doc.setFontSize(10);
           doc.setTextColor(30, 41, 59);
-          doc.text(detailWrapped, margin + 6, ty);
-          ty += detailWrapped.length * lineH;
-          if (recWrapped.length) {
-            ty += 2;
-            doc.setTextColor(51, 65, 85);
-            doc.text(recWrapped, margin + 6, ty);
-            ty += recWrapped.length * lineH;
+          for (const ln of doc.splitTextToSize(f.detail, maxWidth)) {
+            if (y + 4.8 > maxY) { doc.addPage(); y = margin; }
+            doc.text(ln, margin, y); y += 4.8;
           }
-          if (evRowCount) {
-            ty += 3;
-            let ex = margin + 6;
-            let ey = ty;
+          if (f.recommendation) {
+            doc.setTextColor(51, 65, 85);
+            for (const ln of doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth)) {
+              if (y + 4.8 > maxY) { doc.addPage(); y = margin; }
+              doc.text(ln, margin, y); y += 4.8;
+            }
+          }
+          if (evs.length) {
+            y += 3;
+            let ex = margin;
+            let ey = y;
             let placed = 0;
             for (const url of evs) {
-              if (placed > 0 && placed % evPerRow === 0) { ex = margin + 6; ey += evThumbMaxH + evGap; }
+              if (placed > 0 && placed % evPerRow === 0) { ex = margin; ey += evThumbMaxH + 8; }
+              if (ey + evThumbMaxH + 6 > maxY) { doc.addPage(); ex = margin; ey = margin; placed = 0; }
               let dataUrl = "";
               try { dataUrl = await loadImageData(url); } catch { placed++; continue; }
               let dw = 1; let dh = 1;
@@ -567,8 +569,14 @@ export default function InternalAuditReport() {
               ex += evThumbW + evGap;
               placed++;
             }
+            y = ey + evThumbMaxH + 8;
           }
-          y = cardY + cardH + 7;
+          y += 8;
+          if (y <= maxY - 4) {
+            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.15);
+            doc.line(margin, y, pageWidth - margin, y);
+          }
+          y += 6;
         }
       }
 
@@ -585,7 +593,7 @@ export default function InternalAuditReport() {
       });
       const total = (["Critical", "High", "Medium", "Low"] as const).reduce((n, s) => n + (summary[s] || 0), 0);
       rows.push(["Total", String(total), ""]);
-      if (y > 730) { doc.addPage(); y = margin; }
+      if (y > maxY - 14) { doc.addPage(); y = margin; }
       autoTable(doc, {
         startY: y,
         theme: "grid",
@@ -604,7 +612,7 @@ export default function InternalAuditReport() {
       line(report.acknowledgement || buildAck(branch), 10, [30, 41, 59]);
 
       sectionTitle("8. Distribution List");
-      if (y > 730) { doc.addPage(); y = margin; }
+      if (y > maxY - 14) { doc.addPage(); y = margin; }
       autoTable(doc, {
         startY: y,
         theme: "grid",
@@ -620,7 +628,7 @@ export default function InternalAuditReport() {
       });
       y = (doc as any).lastAutoTable.finalY + 16;
 
-      if (y > 740) { doc.addPage(); y = margin; }
+      if (y > maxY - 40) { doc.addPage(); y = margin; }
       doc.setFontSize(10); doc.setTextColor(51, 65, 85);
       doc.text(`Prepared by: ${report.prepared_by || "_______________"}`, margin, y);
       doc.text(`Date: ${formatDDMMYYYY(report.report_date)}`, pageWidth - margin, y, { align: "right" });
@@ -834,7 +842,7 @@ export default function InternalAuditReport() {
                               <div className="flex flex-wrap gap-1.5 max-w-[220px]">
                                 {(f.evidence && f.evidence.length > 0) ? f.evidence.map((url, j) => (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <a key={j} href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Evidence" className="w-24 h-20 object-cover rounded border border-white/20 hover:opacity-80" /></a>
+                                  <a key={j} href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Evidence" className="w-32 h-24 object-cover rounded border border-white/20 hover:opacity-80" /></a>
                                 )) : <span className="text-blue-200/30 text-xs">—</span>}
                               </div>
                             </td>
@@ -1006,7 +1014,7 @@ export default function InternalAuditReport() {
                                   {f.evidence.map((url, j) => (
                                     <a key={j} href={url} target="_blank" rel="noopener noreferrer" className="block">
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img src={url} alt={`Evidence ${j + 1}`} className="h-36 max-w-[280px] object-cover rounded border border-slate-300 shadow-sm hover:opacity-80 transition-opacity" />
+                                      <img src={url} alt={`Evidence ${j + 1}`} className="h-44 max-w-[340px] object-cover rounded border border-slate-300 shadow-sm hover:opacity-80 transition-opacity" />
                                     </a>
                                   ))}
                                 </div>

@@ -311,6 +311,8 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 20;
       const maxWidth = pageWidth - margin * 2;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxY = pageHeight - 12;
       let y = margin;
 
       try {
@@ -330,11 +332,17 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
         doc.setFontSize(size);
         doc.setTextColor(color[0], color[1], color[2]);
         const lines = doc.splitTextToSize(t, maxWidth);
-        doc.text(lines, margin, y);
-        y += (lines.length * size * 0.45) + gap;
+        const lineAdv = size * 0.5;
+        lines.forEach((ln: string) => {
+          if (y + lineAdv > maxY) { doc.addPage(); y = margin; }
+          doc.text(ln, margin, y);
+          y += lineAdv;
+        });
+        y += gap;
         return y;
       };
       const sectionTitle = (t: string) => {
+        if (y > maxY - 24) { doc.addPage(); y = margin; }
         doc.setFontSize(12);
         doc.setTextColor(29, 78, 216);
         doc.text(t, margin, y);
@@ -366,12 +374,9 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
       y = (doc as any).lastAutoTable.finalY + 12;
 
       sectionTitle("1. Audit Notes");
-      if (y > 600) { doc.addPage(); y = margin; }
       line(plan.description || "No audit notes recorded.", 10, [51, 65, 85]);
 
       sectionTitle("2. Findings by Department & Clause");
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const maxY = pageHeight - 12;
       if (plan.findings.length === 0) {
         line("No findings recorded for this audit.", 10, [51, 65, 85]);
       } else {
@@ -381,53 +386,44 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
           if (!byDept.has(key)) byDept.set(key, []);
           byDept.get(key)!.push(f);
         });
-        const lineH = 4.2;
-        const evThumbW = 44;
-        const evThumbMaxH = 34;
-        const evGap = 6;
-        const evPerRow = Math.max(1, Math.floor((maxWidth - 16 + evGap) / (evThumbW + evGap)));
+        const evThumbW = 56;
+        const evThumbMaxH = 44;
+        const evGap = 8;
+        const evPerRow = Math.max(1, Math.floor((maxWidth + evGap) / (evThumbW + evGap)));
         let fi = 0;
         for (const [dept, list] of byDept) {
           sectionTitle(`Department: ${dept}`);
           for (const f of list) {
             const evs = f.evidence || [];
-            doc.setFontSize(9.5);
+            doc.setFontSize(10);
             const attr = `${String(fi + 1).padStart(2, "0")}   |   Clause ${f.clause || "—"}   |   ${f.type}   |   ${f.resolved === true ? "Resolved" : "Open"}`;
-            const detailWrapped = doc.splitTextToSize(f.detail, maxWidth - 16);
-            const recWrapped = f.recommendation ? doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth - 16) : [];
-            const evRowCount = evs.length === 0 ? 0 : Math.ceil(evs.length / evPerRow);
-            const evBlockH = evRowCount ? evRowCount * (evThumbMaxH + evGap) + 4 : 0;
-            const cardH = 11 + detailWrapped.length * lineH + (recWrapped.length ? recWrapped.length * lineH + 3 : 0) + evBlockH;
-            if (y + cardH > maxY) { doc.addPage(); y = margin; }
-            const cardY = y;
-            doc.setFillColor(248, 250, 252);
-            doc.rect(margin, cardY, maxWidth, cardH, "F");
-            doc.setDrawColor(226, 232, 240);
-            doc.setLineWidth(0.2);
-            doc.rect(margin, cardY, maxWidth, cardH, "S");
-            let ty = cardY + 6;
+            if (y + 8 > maxY) { doc.addPage(); y = margin; }
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(9.5);
             doc.setTextColor(29, 78, 216);
-            doc.text(attr, margin + 6, ty);
+            doc.text(attr, margin, y);
             doc.setFont("helvetica", "normal");
-            ty += 5;
+            y += 6;
+            doc.setFontSize(10);
             doc.setTextColor(30, 41, 59);
-            doc.text(detailWrapped, margin + 6, ty);
-            ty += detailWrapped.length * lineH;
-            if (recWrapped.length) {
-              ty += 2;
-              doc.setTextColor(51, 65, 85);
-              doc.text(recWrapped, margin + 6, ty);
-              ty += recWrapped.length * lineH;
+            for (const ln of doc.splitTextToSize(f.detail, maxWidth)) {
+              if (y + 4.8 > maxY) { doc.addPage(); y = margin; }
+              doc.text(ln, margin, y); y += 4.8;
             }
-            if (evRowCount) {
-              ty += 3;
-              let ex = margin + 6;
-              let ey = ty;
+            if (f.recommendation) {
+              doc.setTextColor(51, 65, 85);
+              for (const ln of doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth)) {
+                if (y + 4.8 > maxY) { doc.addPage(); y = margin; }
+                doc.text(ln, margin, y); y += 4.8;
+              }
+            }
+            if (evs.length) {
+              y += 3;
+              let ex = margin;
+              let ey = y;
               let placed = 0;
               for (const url of evs) {
-                if (placed > 0 && placed % evPerRow === 0) { ex = margin + 6; ey += evThumbMaxH + evGap; }
+                if (placed > 0 && placed % evPerRow === 0) { ex = margin; ey += evThumbMaxH + 8; }
+                if (ey + evThumbMaxH + 6 > maxY) { doc.addPage(); ex = margin; ey = margin; placed = 0; }
                 let dataUrl = "";
                 try { dataUrl = await loadImageData(url); } catch { placed++; continue; }
                 let dw = 1; let dh = 1;
@@ -444,8 +440,14 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
                 ex += evThumbW + evGap;
                 placed++;
               }
+              y = ey + evThumbMaxH + 8;
             }
-            y = cardY + cardH + 7;
+            y += 8;
+            if (y <= maxY - 4) {
+              doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.15);
+              doc.line(margin, y, pageWidth - margin, y);
+            }
+            y += 6;
             fi++;
           }
         }
@@ -457,7 +459,7 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
       sectionTitle("4. Confidentiality");
       line("All information obtained during this audit will be treated as confidential and used solely for audit and improvement purposes.", 10, [51, 65, 85]);
 
-      if (y > 700) { doc.addPage(); y = margin; }
+      if (y > maxY - 40) { doc.addPage(); y = margin; }
       y += 8;
       doc.setFontSize(10); doc.setTextColor(51, 65, 85);
       doc.text(`Prepared by: ${plan.prepared_by || "_______________"}`, margin, y);
@@ -710,7 +712,7 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
                                                         {(f.evidence || []).map((url, j) => (
                                                           <div key={j} className="relative group">
                                                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                            <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-44 h-32 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
+                                                            <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-56 h-40 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
                                                             <button
                                                               type="button"
                                                               onClick={() => removeEvidence(plan.id, i, j)}

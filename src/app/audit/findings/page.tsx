@@ -443,7 +443,7 @@ export default function AuditFindings() {
                                                 {(f.evidence || []).map((url, j) => (
                                                   <div key={j} className="relative group">
                                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                    <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-44 h-32 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
+                                                    <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-56 h-40 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
                                                     <button
                                                       type="button"
                                                       onClick={() => removeEvidence(plan.id, i, j)}
