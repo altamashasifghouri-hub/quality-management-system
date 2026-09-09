@@ -1,5 +1,11 @@
 const cache = new Map<string, string>();
 
+function resolveSrc(url: string): string {
+  if (url.startsWith("/") || url.startsWith("data:")) return url;
+  if (typeof window !== "undefined" && url.startsWith(window.location.origin)) return url;
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 export function loadPdfImage(url: string): Promise<string> {
   if (!url) return Promise.resolve("");
   const cached = cache.get(url);
@@ -27,6 +33,19 @@ export function loadPdfImage(url: string): Promise<string> {
       }
     };
     img.onerror = reject;
-    img.src = url;
+    img.src = resolveSrc(url);
   });
+}
+
+export function imageDims(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error("image decode failed"));
+    img.src = dataUrl;
+  });
+}
+
+export function zoomUrl(url: string): string {
+  return url.replace(/sz=w\d+/, "sz=w1600");
 }

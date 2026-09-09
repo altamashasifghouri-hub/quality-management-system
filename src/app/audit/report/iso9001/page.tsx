@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { jsPDF } from "jspdf";
-import { loadPdfImage } from "@/lib/pdf-image";
+import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
@@ -407,6 +407,53 @@ export default function Iso9001Report() {
         const dataUrl = await loadImageData(sigUrl);
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
+
+      sectionTitle("5. Evidence Photographs");
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxY = pageHeight - 12;
+      const evidenceFindings = plan.findings.filter((f) => f.evidence && f.evidence.length > 0);
+      if (evidenceFindings.length === 0) {
+        line("No evidence photographs recorded for this audit.", 10, [51, 65, 85]);
+      } else {
+        const thumbW = 45;
+        const thumbMaxH = 34;
+        const gapX = 12;
+        let rowY = y;
+        let col = 0;
+        for (let fi = 0; fi < plan.findings.length; fi++) {
+          const f = plan.findings[fi];
+          const evs = f.evidence || [];
+          if (evs.length === 0) continue;
+          if (rowY + 8 > maxY) { doc.addPage(); rowY = margin; col = 0; }
+          doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(15, 23, 42);
+          doc.text(`Finding #${String(fi + 1).padStart(2, "0")} — ${f.department || "General"}${f.clause ? ` · Clause ${f.clause}` : ""}${f.type ? ` (${f.type})` : ""}`, margin, rowY);
+          doc.setFont("helvetica", "normal");
+          rowY += 6;
+          for (const url of evs) {
+            if (col >= 2) { rowY += thumbMaxH + 15; col = 0; }
+            if (rowY + thumbMaxH + 9 > maxY) { doc.addPage(); rowY = margin; col = 0; }
+            let dataUrl = "";
+            try { dataUrl = await loadImageData(url); } catch { col++; continue; }
+            let dw = 1; let dh = 1;
+            try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* skip */ }
+            let w = thumbW; let h = (thumbW * dh) / (dw || 1);
+            if (h > thumbMaxH) { h = thumbMaxH; w = (h * dw) / (dh || 1); }
+            const x = col === 0 ? margin : margin + thumbW + gapX;
+            const ix = x + (thumbW - w) / 2;
+            doc.setFillColor(241, 245, 249);
+            doc.rect(ix - 1, rowY - 1, w + 2, h + 2, "F");
+            doc.addImage(dataUrl, "JPEG", ix, rowY, w, h);
+            doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
+            doc.rect(ix, rowY, w, h);
+            doc.link(ix, rowY, w, h, { url: zoomUrl(url) });
+            doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+            doc.text("Click to view full image", x + thumbW / 2, rowY + h + 4, { align: "center" });
+            col++;
+          }
+          rowY += thumbMaxH + 9;
+        }
+        y = rowY;
+      }
 
       const blob = doc.output("blob");
       const formData = new FormData();
