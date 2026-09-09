@@ -73,6 +73,11 @@ export default function AuditFindings() {
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [tab, setTab] = useState<"all" | "internal" | "iso">("all");
+  const [addFor, setAddFor] = useState<string | null>(null);
+  const [addDept, setAddDept] = useState("");
+  const [addType, setAddType] = useState<string>("Medium");
+  const [addDetail, setAddDetail] = useState("");
+  const [deptOptions, setDeptOptions] = useState<Record<string, string[]>>({});
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
@@ -105,6 +110,13 @@ export default function AuditFindings() {
       findings: r.findings || [], source: "iso",
     }));
     setPlans([...intPlans, ...isoArr].sort((a, z) => (z.created_at || "").localeCompare(a.created_at || "")));
+    const deptMap: Record<string, string[]> = {};
+    [...intPlans, ...isoArr].forEach((p) => {
+      const set: string[] = [];
+      p.findings.forEach((f) => { if (f.department && !set.includes(f.department)) set.push(f.department); });
+      deptMap[p.id] = set;
+    });
+    setDeptOptions(deptMap);
     setLoading(false);
   }, [supabase]);
 
@@ -176,9 +188,25 @@ export default function AuditFindings() {
     await deleteDriveFileByUrl(removedUrl);
   }
 
+  async function addFinding(planId: string) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    if (!addDept.trim()) return showErr("Select a department.");
+    if (!addDetail.trim()) return showErr("Enter the NCR detail.");
+    const newFinding: Finding = { department: addDept.trim(), type: addType, detail: addDetail.trim(), timeline: TIMELINE_DAYS[addType] ?? undefined };
+    const updated = [...plan.findings, newFinding];
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+    const deptMap = { ...deptOptions, [planId]: [...new Set([...(deptOptions[planId] || []), addDept.trim()])] };
+    setDeptOptions(deptMap);
+    setAddDept(""); setAddType("Medium"); setAddDetail(""); setAddFor(null);
+    showMsg("NCR added.");
+  }
+
   const branches: { name: string; plans: AuditPlan[] }[] = [];
   const branchMap = new Map<string, AuditPlan[]>();
   const visiblePlans = tab === "all" ? plans : plans.filter((p) => p.source === tab);
+  const inputCls = "px-3 py-2 bg-slate-900 border border-white/15 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark] w-full";
   visiblePlans.forEach((p) => {
     const list = branchMap.get(p.branch_name) || [];
     list.push(p);
@@ -388,6 +416,49 @@ export default function AuditFindings() {
                                   })}
                                 </div>
                               )}
+
+                              <div className="mt-4 border-t border-white/10 pt-4">
+                                {addFor !== plan.id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setAddFor(plan.id); setAddDept((deptOptions[plan.id] || [])[0] || ""); setAddType("Medium"); setAddDetail(""); }}
+                                    className="px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-200 text-sm hover:bg-emerald-600/30 transition-colors"
+                                  >
+                                    + Add more NCR
+                                  </button>
+                                ) : (
+                                  <div className="space-y-3">
+                                    <p className="text-sm font-medium text-white">Add NCR</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="text-xs text-blue-200/60 mb-1 block">Department</label>
+                                        {deptOptions[plan.id] && deptOptions[plan.id].length > 0 ? (
+                                          <select value={addDept} onChange={(e) => setAddDept(e.target.value)} className={inputCls} >
+                                            {deptOptions[plan.id].map((d) => <option key={d} value={d} className="bg-slate-800">{d}</option>)}
+                                          </select>
+                                        ) : (
+                                          <input value={addDept} onChange={(e) => setAddDept(e.target.value)} placeholder="Department" className={inputCls} />
+                                        )}
+                                      </div>
+                                      <div>
+                                        <label className="text-xs text-blue-200/60 mb-1 block">Severity</label>
+                                        <select value={addType} onChange={(e) => { setAddType(e.target.value); }} className={inputCls} >
+                                          {SEVERITIES.map((s) => <option key={s} value={s} className="bg-slate-800">{s}</option>)}
+                                        </select>
+                                        <p className="text-[10px] text-blue-200/40 mt-1">Timeline: {TIMELINE_DAYS[addType]} days</p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-blue-200/60 mb-1 block">Detail</label>
+                                      <textarea value={addDetail} onChange={(e) => setAddDetail(e.target.value)} rows={3} className={inputCls} />
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button type="button" onClick={() => { if (confirm("Add this NCR?")) addFinding(plan.id); }} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors">Add NCR</button>
+                                      <button type="button" onClick={() => setAddFor(null)} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm">Cancel</button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>

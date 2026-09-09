@@ -803,6 +803,18 @@ export default function InternalAuditPlan() {
               </div>
             </div>
 
+            {viewPlan.findings.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm text-amber-200">
+                  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                  Findings are already recorded for this audit, so it can&apos;t be recorded again.
+                </div>
+                <Link href="/audit/findings" className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-medium transition-colors">
+                  Go to Findings &amp; Evidences to add more NCRs
+                </Link>
+              </div>
+            )}
+
             <div className="bg-white text-slate-900 rounded-2xl p-10 shadow-2xl">
               <div className="text-center border-b-2 border-blue-600 pb-4 mb-6">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
