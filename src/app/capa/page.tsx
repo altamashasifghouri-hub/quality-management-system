@@ -217,6 +217,133 @@ export default function CapaPage() {
     showMsg("Root cause and actions saved for this finding.");
   }
 
+  async function renderCapaReport(doc: jsPDF, plan: CapaPlan, finding: CapaFinding, ncr: string, userName: string, sigUrl: string) {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const maxWidth = pageWidth - margin * 2;
+    const maxY = pageHeight - 12;
+    let y = margin;
+    const ensure = (needed: number) => {
+      if (y + needed > maxY) { doc.addPage(); y = margin; }
+    };
+
+    const logoData = await assetToDataUrl(LOGO);
+    embedImage(doc, logoData, (pageWidth - 40) / 2, y, 40, 34);
+    y += 46;
+    doc.setFontSize(16); doc.setTextColor(15, 23, 42);
+    doc.text("CORRECTIVE ACTION & PREVENTIVE ACTION", pageWidth / 2, y, { align: "center" });
+    y += 7;
+    doc.setFontSize(12); doc.setTextColor(29, 78, 216);
+    doc.text("CAPA REPORT", pageWidth / 2, y, { align: "center" });
+    y += 8;
+    doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+    doc.text(`NCR No: ${ncr}`, pageWidth - margin, y, { align: "right" });
+    y += 14;
+
+    autoTable(doc, {
+      startY: y,
+      theme: "grid",
+      head: [["Field", "Value"]],
+      body: [
+        ["NCR / Reference No.", ncr],
+        ["Hotel / Branch Name", plan.branch_name || "—"],
+        ["Audit Plan", plan.title || "—"],
+        ["Plan Document No.", plan.document_number || "—"],
+        ["Department", finding.department || "—"],
+        ["Risk Rating", finding.type || "—"],
+        ["Report Date", formatDDMMYYYY(new Date().toISOString().slice(0, 10))],
+      ],
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: [29, 78, 216] },
+      columnStyles: { 0: { fontStyle: "bold", cellWidth: 55 } },
+    });
+    y = (doc as any).lastAutoTable.finalY + 12;
+
+    const line = (t: string, size = 10, color: [number, number, number] = [30, 41, 59], gap = 5) => {
+      doc.setFontSize(size);
+      doc.setTextColor(color[0], color[1], color[2]);
+      const wrapped = doc.splitTextToSize(t, maxWidth);
+      const above = wrapped.length * size * 0.45 + gap;
+      ensure(above);
+      doc.text(wrapped, margin, y);
+      y += above;
+      return y;
+    };
+    const sectionTitle = (t: string) => {
+      ensure(40);
+      doc.setFontSize(12); doc.setTextColor(29, 78, 216);
+      doc.text(t, margin, y);
+      y += 7;
+      doc.setDrawColor(29, 78, 216);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 7;
+    };
+    const bullet = (t: string) => {
+      doc.setFontSize(10); doc.setTextColor(30, 41, 59);
+      const wrapped = doc.splitTextToSize(`• ${t}`, maxWidth);
+      ensure(wrapped.length * 4.5 + 4);
+      doc.text(wrapped, margin, y);
+      y += wrapped.length * 4.5 + 2;
+    };
+
+    sectionTitle("1. Non-Conformance / Finding");
+    (splitLines(finding.detail).length ? splitLines(finding.detail) : [finding.detail]).forEach(bullet);
+
+    sectionTitle("2. Auditor's Observation (How Observed)");
+    const obs = finding.observation ?? finding.detail;
+    (splitLines(obs).length ? splitLines(obs) : [obs]).forEach(bullet);
+
+    sectionTitle("3. Root Cause Analysis");
+    const rc = splitLines(finding.root_cause || "");
+    (rc.length ? rc : ["Not recorded yet."]).forEach(bullet);
+
+    sectionTitle("4. Corrective Action");
+    const ca = splitLines(finding.corrective_action || "");
+    (ca.length ? ca : ["Not recorded yet."]).forEach(bullet);
+
+    sectionTitle("5. Preventive Action");
+    const pa = splitLines(finding.preventive_action || "");
+    (pa.length ? pa : ["Not recorded yet."]).forEach(bullet);
+
+    sectionTitle("6. Supporting Evidence");
+    if (finding.evidence && finding.evidence.length > 0) {
+      let col = 0;
+      let rowY = y;
+      for (const url of finding.evidence) {
+        try {
+          const dataUrl = await loadImageData(url);
+          const w = 70;
+          const h = 55;
+          if (col % 2 === 0) {
+            ensure(h + 8);
+            rowY = y;
+          }
+          const x = margin + (col % 2) * (maxWidth / 2);
+          doc.addImage(dataUrl, "PNG", x, rowY, w, h);
+          if (/^https?:/i.test(url)) doc.link(x, rowY, w, h, { url });
+          col += 1;
+          if (col % 2 === 0) y = rowY + h + 8;
+        } catch { /* image unavailable */ }
+      }
+      if (col % 2 !== 0) y = rowY + 55 + 8;
+      y += 6;
+    } else {
+      bullet("No supporting evidence attached.");
+    }
+
+    sectionTitle("7. Approval");
+    ensure(52);
+    doc.setFontSize(10); doc.setTextColor(30, 41, 59);
+    doc.text(`${userName}, Quality Assurance Executive`, margin, y + 14);
+    const sigData = await assetToDataUrl(sigUrl);
+    embedImage(doc, sigData, margin, y + 20, 52, 20);
+    doc.setDrawColor(30, 41, 59);
+    doc.line(margin, y + 44, margin + 55, y + 44);
+    doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+    doc.text("Signature", margin + 7, y + 48);
+  }
+
   async function handleGeneratePdf(planId: string, idx: number) {
     const pi = planIndex(planId);
     if (pi < 0) return;
@@ -237,134 +364,10 @@ export default function CapaPage() {
       }
 
       const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 20;
-      const maxWidth = pageWidth - margin * 2;
-      const maxY = pageHeight - 12;
-      const ensure = (needed: number) => {
-        if (y + needed > maxY) { doc.addPage(); y = margin; }
-      };
-      let y = margin;
-
-      const logoData = await assetToDataUrl(LOGO);
-      embedImage(doc, logoData, (pageWidth - 40) / 2, y, 40, 34);
-      y += 46;
-      doc.setFontSize(16); doc.setTextColor(15, 23, 42);
-      doc.text("CORRECTIVE ACTION & PREVENTIVE ACTION", pageWidth / 2, y, { align: "center" });
-      y += 7;
-      doc.setFontSize(12); doc.setTextColor(29, 78, 216);
-      doc.text("CAPA REPORT", pageWidth / 2, y, { align: "center" });
-      y += 8;
-      doc.setFontSize(9); doc.setTextColor(100, 116, 139);
-      doc.text(`NCR No: ${ncr}`, pageWidth - margin, y, { align: "right" });
-      y += 14;
-
-      autoTable(doc, {
-        startY: y,
-        theme: "grid",
-        head: [["Field", "Value"]],
-        body: [
-          ["NCR / Reference No.", ncr],
-          ["Hotel / Branch Name", plan.branch_name || "—"],
-          ["Audit Plan", plan.title || "—"],
-          ["Plan Document No.", plan.document_number || "—"],
-          ["Department", finding.department || "—"],
-          ["Risk Rating", finding.type || "—"],
-          ["Report Date", formatDDMMYYYY(new Date().toISOString().slice(0, 10))],
-        ],
-        styles: { fontSize: 9, cellPadding: 2.5 },
-        headStyles: { fillColor: [29, 78, 216] },
-        columnStyles: { 0: { fontStyle: "bold", cellWidth: 55 } },
-      });
-      y = (doc as any).lastAutoTable.finalY + 12;
-
-      const line = (t: string, size = 10, color: [number, number, number] = [30, 41, 59], gap = 5) => {
-        doc.setFontSize(size);
-        doc.setTextColor(color[0], color[1], color[2]);
-        const wrapped = doc.splitTextToSize(t, maxWidth);
-        const above = wrapped.length * size * 0.45 + gap;
-        ensure(above);
-        doc.text(wrapped, margin, y);
-        y += above;
-        return y;
-      };
-      const sectionTitle = (t: string) => {
-        ensure(40);
-        doc.setFontSize(12); doc.setTextColor(29, 78, 216);
-        doc.text(t, margin, y);
-        y += 7;
-        doc.setDrawColor(29, 78, 216);
-        doc.line(margin, y, pageWidth - margin, y);
-        y += 7;
-      };
-      const bullet = (t: string) => {
-        doc.setFontSize(10); doc.setTextColor(30, 41, 59);
-        const wrapped = doc.splitTextToSize(`• ${t}`, maxWidth);
-        ensure(wrapped.length * 4.5 + 4);
-        doc.text(wrapped, margin, y);
-        y += wrapped.length * 4.5 + 2;
-      };
-
-      sectionTitle("1. Non-Conformance / Finding");
-      (splitLines(finding.detail).length ? splitLines(finding.detail) : [finding.detail]).forEach(bullet);
-
-      sectionTitle("2. Auditor's Observation (How Observed)");
-      const obs = finding.observation ?? finding.detail;
-      (splitLines(obs).length ? splitLines(obs) : [obs]).forEach(bullet);
-
-      sectionTitle("3. Root Cause Analysis");
-      const rc = splitLines(finding.root_cause || "");
-      (rc.length ? rc : ["Not recorded yet."]).forEach(bullet);
-
-      sectionTitle("4. Corrective Action");
-      const ca = splitLines(finding.corrective_action || "");
-      (ca.length ? ca : ["Not recorded yet."]).forEach(bullet);
-
-      sectionTitle("5. Preventive Action");
-      const pa = splitLines(finding.preventive_action || "");
-      (pa.length ? pa : ["Not recorded yet."]).forEach(bullet);
-
-      sectionTitle("6. Recommendation");
-      (splitLines(finding.recommendation || "").length ? splitLines(finding.recommendation || "") : ["—"]).forEach(bullet);
-
-      if (finding.evidence && finding.evidence.length > 0) {
-        sectionTitle("7. Supporting Evidence");
-        let col = 0;
-        let rowY = y;
-        for (const url of finding.evidence) {
-          try {
-            const dataUrl = await loadImageData(url);
-            const w = 70;
-            const h = 55;
-            if (col % 2 === 0) {
-              ensure(h + 8);
-              rowY = y;
-            }
-            if (col !== 0 && col % 2 === 0) rowY = y;
-            const x = margin + (col % 2) * (maxWidth / 2);
-            doc.addImage(dataUrl, "PNG", x, rowY, w, h);
-            col += 1;
-            if (col % 2 === 0) y = rowY + h + 8;
-          } catch { /* image unavailable */ }
-        }
-        if (col % 2 !== 0) y = rowY + 55 + 8;
-        y += 6;
-      }
-
-      sectionTitle("8. Approval");
       const { data: authData } = await supabase.auth.getUser();
       const userName = authData.user?.user_metadata?.full_name || settings.ceo_name || settings.hr_name || "Authorized Signatory";
       const sigUrl = plan.signature || SIG_DEFAULT;
-      ensure(52);
-      doc.setFontSize(10); doc.setTextColor(30, 41, 59);
-      doc.text(`${userName}, Quality Assurance Executive`, margin, y + 14);
-      const sigData = await assetToDataUrl(sigUrl);
-      embedImage(doc, sigData, margin, y + 20, 52, 20);
-      doc.setDrawColor(30, 41, 59);
-      doc.line(margin, y + 44, margin + 55, y + 44);
-      doc.setFontSize(8); doc.setTextColor(100, 116, 139);
-      doc.text("Signature", margin + 7, y + 48);
+      await renderCapaReport(doc, plan, finding, ncr, userName, sigUrl);
 
       const blob = doc.output("blob");
       const formData = new FormData();
@@ -388,6 +391,79 @@ export default function CapaPage() {
       showMsg(`CAPA report ${ncr} generated and saved to Google Drive.`);
     } catch (e: any) {
       showErr(e?.message || "Could not generate CAPA report.");
+    } finally {
+      setGeneratingKey(null);
+    }
+  }
+
+  async function handleGenerateAllPdf() {
+    const tasks: { plan: CapaPlan; finding: CapaFinding; planId: string; idx: number }[] = [];
+    plans.forEach((p) => p.findings.forEach((f, i) => { if (f.detail.trim()) tasks.push({ plan: p, finding: f, planId: p.id, idx: i }); }));
+    if (tasks.length === 0) return showErr("No findings with descriptions to compile CAPA reports for.");
+    if (generatingKey) return;
+    setGeneratingKey("all");
+    setError("");
+
+    try {
+      const existing = plans.flatMap((p) => p.findings).map((f) => f.ncr_number || "").filter(Boolean);
+      const ncrByKey = new Map<string, string>();
+      const doc = new jsPDF();
+      const { data: authData } = await supabase.auth.getUser();
+      const userName = authData.user?.user_metadata?.full_name || settings.ceo_name || settings.hr_name || "Authorized Signatory";
+      let first = true;
+      for (const t of tasks) {
+        let ncr = t.finding.ncr_number;
+        if (!ncr) {
+          ncr = genNcrNumber(t.plan.branch_name, existing);
+          existing.push(ncr);
+        }
+        ncrByKey.set(`${t.planId}::${t.idx}`, ncr);
+        if (!first) doc.addPage();
+        first = false;
+        await renderCapaReport(doc, t.plan, t.finding, ncr, userName, t.plan.signature || SIG_DEFAULT);
+      }
+
+      const blob = doc.output("blob");
+      const formData = new FormData();
+      const today = new Date().toISOString().slice(0, 10);
+      formData.append("file", blob, `CAPA_Reports_${today}.pdf`);
+      formData.append("folderKind", "capa");
+      const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
+        return showErr(errJson?.error?.message || "CAPA compilation upload failed.");
+      }
+      const json = await res.json();
+      if (!json.url) return showErr("CAPA compilation upload failed.");
+
+      const targetByKey = new Map(tasks.map((t) => [`${t.planId}::${t.idx}`, t]));
+      for (const p of plans) {
+        const updated: CapaFinding[] = [];
+        let changed = false;
+        p.findings.forEach((f, i) => {
+          if (targetByKey.has(`${p.id}::${i}`)) {
+            const next = {
+              ...f,
+              ncr_number: ncrByKey.get(`${p.id}::${i}`) || f.ncr_number,
+              capa_pdf_url: json.url,
+              capa_pdf_file_id: json.fileId || null,
+            };
+            if (next.ncr_number !== f.ncr_number || next.capa_pdf_url !== f.capa_pdf_url) changed = true;
+            updated.push(next);
+          } else {
+            updated.push(f);
+          }
+        });
+        if (changed) {
+          const err = await persistFindings(p.id, updated);
+          if (err) return showErr(err.message);
+          setPlans((prev) => prev.map((x) => (x.id === p.id ? { ...x, findings: updated } : x)));
+        }
+      }
+      showMsg(`Compiled ${tasks.length} CAPA report${tasks.length !== 1 ? "s" : ""} into one PDF and saved to Google Drive.`);
+    } catch (e: any) {
+      showErr(e?.message || "Could not compile CAPA reports.");
     } finally {
       setGeneratingKey(null);
     }
@@ -420,6 +496,15 @@ export default function CapaPage() {
 
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
+
+        {!loading && plans.length > 0 && (
+          <div className="mb-8 flex flex-wrap items-center gap-3">
+            <button onClick={handleGenerateAllPdf} disabled={!!generatingKey} className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
+              {generatingKey === "all" ? "Compiling all CAPA reports..." : "Generate All CAPA Reports (one PDF)"}
+            </button>
+            <span className="text-xs text-blue-200/40">Compiles every CAPA in the system into a single PDF and saves it to Google Drive.</span>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" /></div>
@@ -487,12 +572,32 @@ export default function CapaPage() {
                                   </div>
                                 </div>
 
+                                {f.evidence && f.evidence.length > 0 && (
+                                  <div className="mt-4">
+                                    <span className="block text-xs text-blue-200/60 mb-2">Supporting Evidence — click a picture to open it in a new tab</span>
+                                    <div className="flex flex-wrap gap-3">
+                                      {f.evidence.map((ev, ei) => {
+                                        const imgSrc = ev.startsWith("data:") ? ev : `/api/image-proxy?url=${encodeURIComponent(ev)}`;
+                                        return (
+                                          <a key={ei} href={imgSrc} target="_blank" rel="noopener noreferrer" title="Open picture in new tab"
+                                            className="group relative block w-28 h-24 rounded-lg overflow-hidden border border-white/10 hover:border-amber-400/70 transition-colors">
+                                            <img src={imgSrc} alt={`Evidence ${ei + 1}`} className="w-full h-full object-cover" />
+                                            <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                              <svg className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                            </span>
+                                          </a>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
                                 <div className="mt-4 flex flex-wrap items-center gap-3">
                                   <button onClick={() => handleSave(plan.id, idx)} disabled={busy} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
                                     {busy ? "Saving..." : "Save Actions"}
                                   </button>
                                   {!f.capa_pdf_url && (
-                                    <button onClick={() => handleGeneratePdf(plan.id, idx)} disabled={genBusy} className="px-4 py-2 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
+                                    <button onClick={() => handleGeneratePdf(plan.id, idx)} disabled={genBusy || !!generatingKey} className="px-4 py-2 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
                                       {genBusy ? "Generating & Saving..." : "Generate CAPA Report"}
                                     </button>
                                   )}
