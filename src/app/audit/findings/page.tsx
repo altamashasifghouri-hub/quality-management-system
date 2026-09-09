@@ -64,6 +64,26 @@ const sevBg: Record<string, string> = {
   Low: "border-blue-500/40 text-blue-200",
 };
 
+function DetailEditor({ detail, resolved, onSave }: { detail: string; resolved: boolean; onSave: (v: string) => void }) {
+  const [val, setVal] = useState(detail);
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => { setVal(detail); setDirty(false); }, [detail]);
+  return (
+    <div className="relative">
+      <textarea
+        value={val}
+        rows={2}
+        onChange={(e) => { setVal(e.target.value); setDirty(true); }}
+        onBlur={() => {
+          if (dirty) { onSave(val.trim() || detail); setDirty(false); }
+        }}
+        className={`w-full px-3 py-2 bg-slate-900/60 border rounded-lg text-sm font-normal [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y ${resolved ? "text-white/50" : "text-white/80"} border-white/15`}
+      />
+      {dirty && <span className="absolute right-2 top-1.5 text-[10px] text-blue-300/70">editing…</span>}
+    </div>
+  );
+}
+
 export default function AuditFindings() {
   const supabase = createClient();
   const [plans, setPlans] = useState<AuditPlan[]>([]);
@@ -166,6 +186,27 @@ export default function AuditFindings() {
     await persist(planId, updated);
     const deptMap = { ...deptOptions, [planId]: [...new Set([...(deptOptions[planId] || []), dept.trim()])] };
     setDeptOptions(deptMap);
+  }
+
+  async function updateDetail(planId: string, idx: number, detail: string) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    if (!detail.trim()) return showErr("Description can't be empty.");
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, detail: detail.trim() } : f));
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+    showMsg("Description updated.");
+  }
+
+  async function deleteFinding(planId: string, idx: number) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const evs = plan.findings[idx]?.evidence || [];
+    const updated = plan.findings.filter((_, i) => i !== idx);
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+    await Promise.all(evs.map((u) => deleteDriveFileByUrl(u)));
+    showMsg("Finding deleted.");
   }
 
   async function addEvidence(planId: string, idx: number, file: File | null) {
@@ -392,7 +433,7 @@ export default function AuditFindings() {
                                               {f.clause && <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">Clause {f.clause}</span>}
                                               <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(i + 1).padStart(2, "0")}</span>
                                             </div>
-                                            <p className={`text-sm ${resolved ? "text-white/50 line-through" : "text-white/80"}`}>{f.detail}</p>
+                                            <DetailEditor detail={f.detail} resolved={resolved} onSave={(v) => updateDetail(plan.id, i, v)} />
                                             {f.recommendation && (
                                               <p className="text-xs text-blue-200/60 mt-2"><span className="text-blue-300">Recommendation:</span> {f.recommendation}</p>
                                             )}
@@ -430,6 +471,15 @@ export default function AuditFindings() {
                                                 ✓
                                               </span>
                                               {resolved ? "Resolved" : "Unresolved"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => { if (confirm(`Delete this finding?\n\n${f.detail.slice(0, 120)}${f.detail.length > 120 ? "…" : ""}`)) deleteFinding(plan.id, i); }}
+                                              className="flex items-center gap-1 px-3 py-2 rounded-lg border border-white/15 text-xs font-medium text-white/50 hover:text-red-300 hover:border-red-500/40 hover:bg-red-500/10 transition-colors"
+                                              title="Delete finding"
+                                            >
+                                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                                              Delete
                                             </button>
                                           </div>
                                         </div>
