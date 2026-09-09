@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { loadPdfImage } from "@/lib/pdf-image";
 
 interface CapaFinding {
   department: string;
@@ -112,7 +113,8 @@ async function assetToDataUrl(url: string): Promise<string> {
     if (url.startsWith("data:")) {
       dataUrl = url;
     } else {
-      const res = await fetch(url);
+      const proxy = url.startsWith("/") ? url : `/api/image-proxy?url=${encodeURIComponent(url)}`;
+      const res = await fetch(proxy);
       if (!res.ok) return "";
       const blob = await res.blob();
       dataUrl = await new Promise<string>((resolve, reject) => {
@@ -140,20 +142,7 @@ function embedImage(doc: jsPDF, dataUrl: string, x: number, y: number, w: number
 }
 
 function loadImageData(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width; canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return reject(new Error("canvas"));
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
+  return loadPdfImage(url);
 }
 
 export default function CapaPage() {
