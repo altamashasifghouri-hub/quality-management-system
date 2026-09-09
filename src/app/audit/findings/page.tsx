@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 
-interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; timeline?: number; }
 interface AuditPlan {
   id: string;
   title: string;
@@ -21,6 +21,9 @@ interface AuditPlan {
 }
 
 const SEVERITIES = ["Critical", "High", "Medium", "Low"] as const;
+
+const TIMELINE_DAYS: Record<string, number> = { Critical: 2, High: 4, Medium: 7, Low: 10 };
+const TIMELINE_OPTIONS = [2, 4, 7, 10];
 
 function severities(findings: Finding[]) {
   const s: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
@@ -129,7 +132,15 @@ export default function AuditFindings() {
   async function changeType(planId: string, idx: number, type: string) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan) return;
-    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, type } : f));
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, type, timeline: TIMELINE_DAYS[type] ?? f.timeline } : f));
+    updateLocal(planId, updated);
+    await persist(planId, updated);
+  }
+
+  async function changeTimeline(planId: string, idx: number, days: number) {
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, timeline: days } : f));
     updateLocal(planId, updated);
     await persist(planId, updated);
   }
@@ -319,6 +330,13 @@ export default function AuditFindings() {
                                                 className={`px-2 py-1 text-xs rounded-lg border bg-slate-900 [color-scheme:dark] ${sevBg[f.type] || sevBg.Medium}`}
                                               >
                                                 {SEVERITIES.map((sev) => <option key={sev} value={sev} className="bg-slate-900">{sev}</option>)}
+                                              </select>
+                                              <select
+                                                value={f.timeline ?? TIMELINE_DAYS[f.type] ?? ""}
+                                                onChange={(e) => changeTimeline(plan.id, i, Number(e.target.value))}
+                                                className="px-2 py-1 text-xs rounded-lg border bg-slate-900 text-blue-200 border-white/15 [color-scheme:dark]"
+                                              >
+                                                {TIMELINE_OPTIONS.map((d) => <option key={d} value={d} className="bg-slate-900">Timeline: {d} days</option>)}
                                               </select>
                                               <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
                                               {f.clause && <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">Clause {f.clause}</span>}
