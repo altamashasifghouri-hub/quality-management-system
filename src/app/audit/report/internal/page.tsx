@@ -507,8 +507,8 @@ export default function InternalAuditReport() {
         line("No findings recorded for this audit.", 10, [51, 65, 85]);
       } else {
         const lineH = 4.2;
-        const evThumbW = 30;
-        const evThumbMaxH = 22;
+        const evThumbW = 44;
+        const evThumbMaxH = 34;
         const evGap = 6;
         const evPerRow = Math.max(1, Math.floor((maxWidth - 16 + evGap) / (evThumbW + evGap)));
         for (let i = 0; i < report.findings.length; i++) {
@@ -562,8 +562,8 @@ export default function InternalAuditReport() {
               doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
               doc.rect(ex, iy, w, h);
               doc.link(ex, iy, w, h, { url: zoomUrl(url) });
-              doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
-              doc.text("Click for full view", ex + w / 2, iy + h + 2.5, { align: "center" });
+              doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
+              doc.text("Click for full view", ex + w / 2, iy + h + 3, { align: "center" });
               ex += evThumbW + evGap;
               placed++;
             }
@@ -834,7 +834,7 @@ export default function InternalAuditReport() {
                               <div className="flex flex-wrap gap-1.5 max-w-[220px]">
                                 {(f.evidence && f.evidence.length > 0) ? f.evidence.map((url, j) => (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <a key={j} href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Evidence" className="w-14 h-12 object-cover rounded border border-white/20 hover:opacity-80" /></a>
+                                  <a key={j} href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Evidence" className="w-24 h-20 object-cover rounded border border-white/20 hover:opacity-80" /></a>
                                 )) : <span className="text-blue-200/30 text-xs">—</span>}
                               </div>
                             </td>
@@ -1006,7 +1006,7 @@ export default function InternalAuditReport() {
                                   {f.evidence.map((url, j) => (
                                     <a key={j} href={url} target="_blank" rel="noopener noreferrer" className="block">
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img src={url} alt={`Evidence ${j + 1}`} className="h-24 max-w-[180px] object-cover rounded border border-slate-300 shadow-sm hover:opacity-80 transition-opacity" />
+                                      <img src={url} alt={`Evidence ${j + 1}`} className="h-36 max-w-[280px] object-cover rounded border border-slate-300 shadow-sm hover:opacity-80 transition-opacity" />
                                     </a>
                                   ))}
                                 </div>

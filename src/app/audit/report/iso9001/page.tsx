@@ -382,8 +382,8 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
           byDept.get(key)!.push(f);
         });
         const lineH = 4.2;
-        const evThumbW = 30;
-        const evThumbMaxH = 22;
+        const evThumbW = 44;
+        const evThumbMaxH = 34;
         const evGap = 6;
         const evPerRow = Math.max(1, Math.floor((maxWidth - 16 + evGap) / (evThumbW + evGap)));
         let fi = 0;
@@ -439,8 +439,8 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
                 doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
                 doc.rect(ex, iy, w, h);
                 doc.link(ex, iy, w, h, { url: zoomUrl(url) });
-                doc.setFontSize(6.5); doc.setTextColor(100, 116, 139);
-                doc.text("Click for full view", ex + w / 2, iy + h + 2.5, { align: "center" });
+                doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
+                doc.text("Click for full view", ex + w / 2, iy + h + 3, { align: "center" });
                 ex += evThumbW + evGap;
                 placed++;
               }
@@ -710,7 +710,7 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
                                                         {(f.evidence || []).map((url, j) => (
                                                           <div key={j} className="relative group">
                                                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                            <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-20 h-16 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
+                                                            <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-44 h-32 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
                                                             <button
                                                               type="button"
                                                               onClick={() => removeEvidence(plan.id, i, j)}
