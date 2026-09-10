@@ -509,6 +509,19 @@ export default function CapaPage() {
     });
   }
 
+  function togglePlanSelection(planId: string) {
+    setSelectedKeys((prev) => {
+      const plan = plans.find((p) => p.id === planId);
+      if (!plan) return prev;
+      const keys = plan.findings.map((_, i) => `${plan.id}::${i}`);
+      const allSelected = keys.length > 0 && keys.every((k) => prev.has(k));
+      const next = new Set(prev);
+      if (allSelected) keys.forEach((k) => next.delete(k));
+      else keys.forEach((k) => next.add(k));
+      return next;
+    });
+  }
+
   function handleSelectAll() {
     const allKeys = plans.flatMap((p) => p.findings.map((_, i) => `${p.id}::${i}`));
     setSelectedKeys((prev) => {
@@ -702,6 +715,9 @@ export default function CapaPage() {
                       {group.plans.map((plan) => {
                         if (plan.findings.length === 0) return null;
                         const planOpen = expandedPlans.has(plan.id);
+                        const planKeys = plan.findings.map((_, i) => `${plan.id}::${i}`);
+                        const planSelectedCount = planKeys.filter((k) => selectedKeys.has(k)).length;
+                        const planAllSelected = planSelectedCount === planKeys.length;
                         return (
                           <div key={plan.id} className="space-y-4">
                             <button onClick={() => togglePlan(plan.id)} className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-2 hover:border-amber-400/40 transition-colors">
@@ -717,6 +733,13 @@ export default function CapaPage() {
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-blue-200/40">{[plan.document_number, plan.date_of_plan, plan.audit_period].filter(Boolean).join(" · ")}</span>
                                 <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-1 rounded-full border border-purple-500/30">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); togglePlanSelection(plan.id); }}
+                                  title={planAllSelected ? `Deselect all CAPAs of this audit` : `Select all ${planKeys.length} CAPAs of this audit`}
+                                  className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${planSelectedCount > 0 ? "bg-amber-500/90 hover:bg-amber-400 border-amber-500/40 text-slate-900" : "bg-white/5 hover:bg-white/10 border-white/15 text-neutral-300"}`}
+                                >
+                                  {planAllSelected ? "Clear" : planSelectedCount > 0 ? `Marked ${planSelectedCount}/${planKeys.length}` : "Mark All"}
+                                </button>
                               </div>
                             </button>
 
