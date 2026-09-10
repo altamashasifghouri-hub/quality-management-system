@@ -430,8 +430,10 @@ export default function CapaPage() {
 
   async function handleGenerateAllPdf() {
     const tasks: { plan: CapaPlan; finding: CapaFinding; planId: string; idx: number }[] = [];
-    plans.forEach((p) => p.findings.forEach((f, i) => { if (f.detail.trim()) tasks.push({ plan: p, finding: f, planId: p.id, idx: i }); }));
-    if (tasks.length === 0) return showErr("No findings with descriptions to compile CAPA reports for.");
+    plans.forEach((p) => p.findings.forEach((f, i) => {
+      if (selectedKeys.has(`${p.id}::${i}`) && f.detail.trim()) tasks.push({ plan: p, finding: f, planId: p.id, idx: i });
+    }));
+    if (tasks.length === 0) return showErr("Select at least one CAPA with a description to compile reports for.");
     if (generatingKey) return;
     setGeneratingKey("all");
     setError("");
@@ -679,8 +681,8 @@ export default function CapaPage() {
 
         {!loading && plans.length > 0 && (
           <div className="mb-8 flex flex-wrap items-center gap-3">
-            <button onClick={handleGenerateAllPdf} disabled={!!generatingKey} className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
-              {generatingKey === "all" ? "Compiling all CAPA reports..." : "Generate All CAPA Reports (one PDF)"}
+            <button onClick={handleGenerateAllPdf} disabled={selectedKeys.size === 0 || !!generatingKey} className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
+              {generatingKey === "all" ? "Compiling selected CAPA reports..." : "Generate Selected CAPA Reports (one PDF)"}
             </button>
             <button onClick={handleSelectAll} disabled={!!generatingKey} className="px-4 py-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors disabled:opacity-50">
               {allSelected ? "Clear Selection" : "Select Opened CAPAs"}
