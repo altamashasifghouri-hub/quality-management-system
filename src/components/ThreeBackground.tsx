@@ -102,56 +102,16 @@ export default function ThreeBackground() {
     scene.add(stars.points, starsMid.points, starsBig.points);
 
     const disposeList: { dispose: () => void }[] = [stars, starsMid, starsBig];
-    const planets: { mesh: THREE.Mesh; spin: number; tilt: number; radius: number }[] = [];
-
-    const planetDefs = [
-      { color: "#c2603a", size: 0.16, radius: 2.6, spin: 0.4 },
-      { color: "#d0a06a", size: 0.22, radius: 3.6, spin: 0.3, ring: true },
-      { color: "#6fd3de", size: 0.19, radius: 4.7, spin: 0.24 },
-      { color: "#a78bfa", size: 0.14, radius: 5.6, spin: 0.18 },
-    ];
-
-    planetDefs.forEach((def) => {
-      const tilt = (Math.random() - 0.5) * 0.9;
-      const group = new THREE.Group();
-      group.rotation.z = tilt;
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(def.size, 24, 24),
-        new THREE.MeshPhongMaterial({ color: def.color, shininess: 30 })
-      );
-      mesh.position.x = def.radius;
-      group.add(mesh);
-      const glow = glowSprite(new THREE.Color(def.color), def.size * 7);
-      mesh.add(glow);
-      disposeList.push(mesh.geometry, mesh.material as THREE.Material, glow.material);
-      if (def.ring) {
-        const ring = new THREE.Mesh(
-          new THREE.RingGeometry(def.size * 1.5, def.size * 2.6, 40),
-          new THREE.MeshBasicMaterial({
-            color: def.color,
-            transparent: true,
-            opacity: 0.5,
-            side: THREE.DoubleSide,
-          })
-        );
-        ring.rotation.x = Math.PI / 2.4;
-        ring.rotation.z = 0.4;
-        mesh.add(ring);
-        disposeList.push(ring.geometry, ring.material as THREE.Material);
-      }
-      scene.add(group);
-      planets.push({ mesh, spin: def.spin, tilt, radius: def.radius });
-    });
 
     const moonGroup = new THREE.Group();
     moonGroup.rotation.z = 0.35;
     const moonMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.1, 24, 24),
+      new THREE.SphereGeometry(0.14, 24, 24),
       new THREE.MeshPhongMaterial({ color: "#c9d4e8", shininess: 40, emissive: new THREE.Color("#2a3a5c") })
     );
     moonMesh.position.x = 4.2;
     moonGroup.add(moonMesh);
-    const moonGlow = glowSprite(new THREE.Color("#c9d4e8"), 0.9);
+    const moonGlow = glowSprite(new THREE.Color("#c9d4e8"), 1.1);
     moonMesh.add(moonGlow);
     scene.add(moonGroup);
     disposeList.push(moonMesh.geometry, moonMesh.material as THREE.Material, moonGlow.material);
@@ -185,13 +145,6 @@ export default function ThreeBackground() {
       stars.points.rotation.x = Math.sin(t * 0.02) * 0.01;
       starsMid.points.rotation.y = -t * 0.006;
       starsBig.points.rotation.y = t * 0.003 + Math.sin(t * 0.4) * 0.02;
-
-      planets.forEach((p) => {
-        const angle = t * p.spin;
-        p.mesh.position.x = Math.cos(angle) * p.radius;
-        p.mesh.position.z = Math.sin(angle) * p.radius;
-        p.mesh.rotation.y = t * (p.spin + 1.2);
-      });
 
       moonGroup.rotation.y = t * 0.55;
       moonMesh.rotation.y = t * 1.5;
