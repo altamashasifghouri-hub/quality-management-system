@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import ThreeBackground from "@/components/ThreeBackground";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -36,7 +35,6 @@ export default function SignIn() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900/80 via-blue-900/40 to-slate-900/80 px-4">
-      <ThreeBackground />
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-3 mb-6">

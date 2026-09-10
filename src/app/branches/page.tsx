@@ -175,7 +175,7 @@ export default function BranchesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
       <Navbar />
 
       <main className="max-w-4xl mx-auto px-6 py-16">
