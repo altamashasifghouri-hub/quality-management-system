@@ -523,10 +523,13 @@ export default function CapaPage() {
   }
 
   function handleSelectAll() {
-    const allKeys = plans.flatMap((p) => p.findings.map((_, i) => `${p.id}::${i}`));
+    const openKeys = plans
+      .filter((p) => expandedPlans.has(p.id) && expandedBranches.has(p.branch_name))
+      .flatMap((p) => p.findings.map((_, i) => `${p.id}::${i}`));
+    if (openKeys.length === 0) return showErr("Open at least one audit dropdown first, then select its CAPAs.");
     setSelectedKeys((prev) => {
-      if (allKeys.every((k) => prev.has(k))) return new Set();
-      return new Set(allKeys);
+      if (openKeys.every((k) => prev.has(k))) return new Set();
+      return new Set(openKeys);
     });
   }
 
@@ -652,8 +655,10 @@ export default function CapaPage() {
   groupMap.forEach((list, name) => branchGroups.push({ name, plans: list }));
 
   const inputCls = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-y";
-  const allKeys = plans.flatMap((p) => p.findings.map((_, i) => `${p.id}::${i}`));
-  const allSelected = allKeys.length > 0 && allKeys.every((k) => selectedKeys.has(k));
+  const openKeys = plans
+    .filter((p) => expandedPlans.has(p.id) && expandedBranches.has(p.branch_name))
+    .flatMap((p) => p.findings.map((_, i) => `${p.id}::${i}`));
+  const allSelected = openKeys.length > 0 && openKeys.every((k) => selectedKeys.has(k));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -678,7 +683,7 @@ export default function CapaPage() {
               {generatingKey === "all" ? "Compiling all CAPA reports..." : "Generate All CAPA Reports (one PDF)"}
             </button>
             <button onClick={handleSelectAll} disabled={!!generatingKey} className="px-4 py-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors disabled:opacity-50">
-              {allSelected ? "Clear Selection" : "Select All CAPAs"}
+              {allSelected ? "Clear Selection" : "Select Opened CAPAs"}
             </button>
             <button onClick={handleDownloadZip} disabled={selectedKeys.size === 0 || !!generatingKey} className="px-5 py-2.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
               {generatingKey === "zip" ? "Preparing ZIP..." : `Download Selected (${selectedKeys.size}) as ZIP`}
