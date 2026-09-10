@@ -3,33 +3,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-function makeGlowTexture(rgb: { r: number; g: number; b: number }) {
-  const size = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, `rgba(${(rgb.r * 255) | 0},${(rgb.g * 255) | 0},${(rgb.b * 255) | 0},1)`);
-  g.addColorStop(0.35, `rgba(${(rgb.r * 255) | 0},${(rgb.g * 255) | 0},${(rgb.b * 255) | 0},0.35)`);
-  g.addColorStop(1, `rgba(${(rgb.r * 255) | 0},${(rgb.g * 255) | 0},${(rgb.b * 255) | 0},0)`);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(canvas);
-}
-
-function glowSprite(color: THREE.Color, scale: number) {
-  const mat = new THREE.SpriteMaterial({
-    map: makeGlowTexture({ r: color.r, g: color.g, b: color.b }),
-    transparent: true,
-    opacity: 0.9,
-    depthWrite: false,
-  });
-  const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(scale, scale, 1);
-  return sprite;
-}
-
 function makeStars(count: number, size: number, radiusMin: number, radiusMax: number, palette: string[]) {
   const geo = new THREE.BufferGeometry();
   const pos = new Float32Array(count * 3);
@@ -103,19 +76,6 @@ export default function ThreeBackground() {
 
     const disposeList: { dispose: () => void }[] = [stars, starsMid, starsBig];
 
-    const moonGroup = new THREE.Group();
-    moonGroup.rotation.z = 0.35;
-    const moonMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 24, 24),
-      new THREE.MeshPhongMaterial({ color: "#c9d4e8", shininess: 40, emissive: new THREE.Color("#2a3a5c") })
-    );
-    moonMesh.position.x = 4.2;
-    moonGroup.add(moonMesh);
-    const moonGlow = glowSprite(new THREE.Color("#c9d4e8"), 1.1);
-    moonMesh.add(moonGlow);
-    scene.add(moonGroup);
-    disposeList.push(moonMesh.geometry, moonMesh.material as THREE.Material, moonGlow.material);
-
     let width = 0;
     let height = 0;
     const mouse = { x: 0, y: 0 };
@@ -145,9 +105,6 @@ export default function ThreeBackground() {
       stars.points.rotation.x = Math.sin(t * 0.02) * 0.01;
       starsMid.points.rotation.y = -t * 0.006;
       starsBig.points.rotation.y = t * 0.003 + Math.sin(t * 0.4) * 0.02;
-
-      moonGroup.rotation.y = t * 0.55;
-      moonMesh.rotation.y = t * 1.5;
 
       camera.position.x += (mouse.x * 1.4 - camera.position.x) * 0.03;
       camera.position.y += (-mouse.y * 1.0 - camera.position.y) * 0.03;
