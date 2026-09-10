@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
@@ -156,6 +156,9 @@ export default function CapaPage() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [generatingKey, setGeneratingKey] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
+  const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set());
+  const branchInitDone = useRef(false);
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
@@ -187,6 +190,33 @@ export default function CapaPage() {
   }, [supabase]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (!loading && plans.length > 0 && !branchInitDone.current) {
+      branchInitDone.current = true;
+      setExpandedBranches(new Set(plans.map((p) => p.branch_name)));
+    }
+  }, [loading, plans]);
+
+  function toggleBranch(name: string) {
+    setExpandedBranches((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
+
+  function togglePlan(planId: string) {
+    setExpandedPlans((prev) => {
+      const next = new Set(prev);
+      if (next.has(planId)) next.delete(planId); else next.add(planId);
+      return next;
+    });
+  }
+
+  function toggleBranchesAll(expand: boolean) {
+    setExpandedBranches(expand ? new Set(plans.map((p) => p.branch_name)) : new Set());
+  }
 
   function planIndex(planId: string) {
     return plans.findIndex((p) => p.id === planId);
@@ -643,6 +673,9 @@ export default function CapaPage() {
             <button onClick={handleDownloadCompiledPdf} disabled={selectedKeys.size === 0 || !!generatingKey} className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
               {generatingKey === "compiled" ? "Compiling PDF..." : "Download Compiled PDF"}
             </button>
+            <button onClick={() => toggleBranchesAll(expandedBranches.size < branchGroups.length)} className="px-4 py-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors">
+              {expandedBranches.size < branchGroups.length ? "Expand All Branches" : "Collapse All Branches"}
+            </button>
             <span className="text-xs text-blue-200/40">Tick the checkboxes on the CAPAs you want, then download them as one PDF or as a ZIP.</span>
           </div>
         )}
@@ -655,107 +688,123 @@ export default function CapaPage() {
           <div className="space-y-8">
             {branchGroups.map((group) => {
               const totalFindings = group.plans.reduce((n, p) => n + p.findings.length, 0);
+              const branchOpen = expandedBranches.has(group.name);
               return (
                 <div key={group.name}>
-                  <h2 className="text-lg font-semibold text-white mb-3">{group.name} <span className="text-xs text-blue-200/40">· {totalFindings} finding{totalFindings !== 1 ? "s" : ""}</span></h2>
-                  <div className="space-y-6">
-                    {group.plans.map((plan) => {
-                      if (plan.findings.length === 0) return null;
-                      return (
-                        <div key={plan.id} className="space-y-4">
-                          <div className="bg-white/[0.04] border border-white/10 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <h3 className="text-white font-medium flex items-center gap-2 flex-wrap">
-                                {plan.title}
-                                <span className={`px-2 py-0.5 text-[10px] rounded-full ${plan.source === "iso" ? "bg-blue-500/20 border border-blue-500/30 text-blue-200" : "bg-purple-500/20 border border-purple-500/30 text-purple-200"}`}>
-                                  {plan.source === "iso" ? "ISO 9001" : "Internal"}
+                  <button onClick={() => toggleBranch(group.name)} className="w-full flex items-center gap-2 text-lg font-semibold text-white mb-3 hover:text-amber-300 transition-colors">
+                    <svg className={`w-5 h-5 text-amber-400 transition-transform ${branchOpen ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                    {group.name}
+                    <span className="text-xs text-blue-200/40">· {totalFindings} finding{totalFindings !== 1 ? "s" : ""}</span>
+                    <span className="text-xs text-amber-300/60">{branchOpen ? "· (collapse)" : "· (open)"}</span>
+                  </button>
+                  {branchOpen && (
+                    <div className="space-y-6">
+                      {group.plans.map((plan) => {
+                        if (plan.findings.length === 0) return null;
+                        const planOpen = expandedPlans.has(plan.id);
+                        return (
+                          <div key={plan.id} className="space-y-4">
+                            <button onClick={() => togglePlan(plan.id)} className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-2 hover:border-amber-400/40 transition-colors">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <svg className={`w-4 h-4 text-purple-300 transition-transform ${planOpen ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+                                <span className="text-white font-medium flex items-center gap-2 flex-wrap">
+                                  {plan.title}
+                                  <span className={`px-2 py-0.5 text-[10px] rounded-full ${plan.source === "iso" ? "bg-blue-500/20 border border-blue-500/30 text-blue-200" : "bg-purple-500/20 border border-purple-500/30 text-purple-200"}`}>
+                                    {plan.source === "iso" ? "ISO 9001" : "Internal"}
+                                  </span>
                                 </span>
-                              </h3>
-                              <p className="text-xs text-blue-200/40 mt-0.5">{[plan.document_number, plan.date_of_plan, plan.audit_period].filter(Boolean).join(" · ")}</p>
-                            </div>
-                            <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-1 rounded-full border border-purple-500/30">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
-                          </div>
-
-                          {plan.findings.map((f, idx) => {
-                            const key = `${plan.id}::${idx}`;
-                            const busy = savingKey === key;
-                            const genBusy = generatingKey === key;
-                            return (
-                              <div key={`${plan.id}-${idx}`} className={`bg-white/5 backdrop-blur-sm border rounded-2xl p-5 ${f.capa_pdf_url ? "border-green-500/30" : "border-white/10"}`}>
-                                <div className="flex flex-wrap items-center gap-2 mb-4">
-                                  <label className="flex items-center cursor-pointer" title="Select to include in ZIP download">
-                                    <input type="checkbox" checked={selectedKeys.has(key)} onChange={() => toggleSelect(key)} className="w-4 h-4 accent-amber-500 cursor-pointer" />
-                                  </label>
-                                  <span className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[f.type] || sevColor.Medium}`}>{f.type}</span>
-                                  <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
-                                  <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(idx + 1).padStart(2, "0")}</span>
-                                  {f.ncr_number && <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-200">{f.ncr_number}</span>}
-                                  {f.capa_pdf_url && !genBusy && (
-                                    <a href={f.capa_pdf_url} target="_blank" rel="noopener noreferrer" className="ml-auto px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-500 text-white">View Saved PDF</a>
-                                  )}
-                                </div>
-
-                                <div className="space-y-4">
-                                  <div>
-                                    <span className="block text-xs text-blue-200/60 mb-1">Auditor's Observation (how observed)</span>
-                                    <textarea rows={2} value={f.observation ?? ""} onChange={(e) => patchFinding(plan.id, idx, { observation: e.target.value })} className={inputCls} />
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                      <span className="block text-xs text-blue-200/60 mb-1">Root Cause</span>
-                                      <textarea rows={4} value={f.root_cause || ""} onChange={(e) => patchFinding(plan.id, idx, { root_cause: e.target.value })} className={inputCls} placeholder="Why did this happen?" />
-                                    </div>
-                                    <div>
-                                      <span className="block text-xs text-blue-200/60 mb-1">Corrective Action</span>
-                                      <textarea rows={4} value={f.corrective_action || ""} onChange={(e) => patchFinding(plan.id, idx, { corrective_action: e.target.value })} className={inputCls} placeholder="What will be done to fix it?" />
-                                    </div>
-                                    <div>
-                                      <span className="block text-xs text-blue-200/60 mb-1">Preventive Action</span>
-                                      <textarea rows={4} value={f.preventive_action || ""} onChange={(e) => patchFinding(plan.id, idx, { preventive_action: e.target.value })} className={inputCls} placeholder="How will recurrence be prevented?" />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {f.evidence && f.evidence.length > 0 && (
-                                  <div className="mt-4">
-                                    <span className="block text-xs text-blue-200/60 mb-2">Supporting Evidence — click a picture to open it in a new tab</span>
-                                    <div className="flex flex-wrap gap-3">
-                                      {f.evidence.map((ev, ei) => {
-                                        const imgSrc = ev.startsWith("data:") ? ev : `/api/image-proxy?url=${encodeURIComponent(ev)}`;
-                                        return (
-                                          <a key={ei} href={imgSrc} target="_blank" rel="noopener noreferrer" title="Open picture in new tab"
-                                            className="group relative block w-28 h-24 rounded-lg overflow-hidden border border-white/10 hover:border-amber-400/70 transition-colors">
-                                            <img src={imgSrc} alt={`Evidence ${ei + 1}`} className="w-full h-full object-cover" />
-                                            <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                              <svg className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
-                                            </span>
-                                          </a>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-
-                                <div className="mt-4 flex flex-wrap items-center gap-3">
-                                  <button onClick={() => handleSave(plan.id, idx)} disabled={busy} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                                    {busy ? "Saving..." : "Save Actions"}
-                                  </button>
-                                  {!f.capa_pdf_url && (
-                                    <button onClick={() => handleGeneratePdf(plan.id, idx)} disabled={genBusy || !!generatingKey} className="px-4 py-2 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
-                                      {genBusy ? "Generating & Saving..." : "Generate CAPA Report"}
-                                    </button>
-                                  )}
-                                  {f.detail && (
-                                    <span className="text-xs text-blue-200/50 max-w-md truncate">Finding: {f.detail}</span>
-                                  )}
-                                </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-blue-200/40">{[plan.document_number, plan.date_of_plan, plan.audit_period].filter(Boolean).join(" · ")}</span>
+                                <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-1 rounded-full border border-purple-500/30">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
+                              </div>
+                            </button>
+
+                            {planOpen && (
+                              <div className="pl-3 sm:pl-5 border-l border-amber-400/20 space-y-4">
+                                {plan.findings.map((f, idx) => {
+                                  const key = `${plan.id}::${idx}`;
+                                  const busy = savingKey === key;
+                                  const genBusy = generatingKey === key;
+                                  return (
+                                    <div key={`${plan.id}-${idx}`} className={`bg-white/5 backdrop-blur-sm border rounded-2xl p-5 ${f.capa_pdf_url ? "border-green-500/30" : "border-white/10"}`}>
+                                      <div className="flex flex-wrap items-center gap-2 mb-4">
+                                        <label className="flex items-center cursor-pointer" title="Select to include in ZIP download">
+                                          <input type="checkbox" checked={selectedKeys.has(key)} onChange={() => toggleSelect(key)} className="w-4 h-4 accent-amber-500 cursor-pointer" />
+                                        </label>
+                                        <span className={`px-2 py-0.5 text-xs rounded-full border ${sevColor[f.type] || sevColor.Medium}`}>{f.type}</span>
+                                        <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
+                                        <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(idx + 1).padStart(2, "0")}</span>
+                                        {f.ncr_number && <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-200">{f.ncr_number}</span>}
+                                        {f.capa_pdf_url && !genBusy && (
+                                          <a href={f.capa_pdf_url} target="_blank" rel="noopener noreferrer" className="ml-auto px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-500 text-white">View Saved PDF</a>
+                                        )}
+                                      </div>
+
+                                      <div className="space-y-4">
+                                        <div>
+                                          <span className="block text-xs text-blue-200/60 mb-1">Auditor's Observation (how observed)</span>
+                                          <textarea rows={2} value={f.observation ?? ""} onChange={(e) => patchFinding(plan.id, idx, { observation: e.target.value })} className={inputCls} />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                          <div>
+                                            <span className="block text-xs text-blue-200/60 mb-1">Root Cause</span>
+                                            <textarea rows={4} value={f.root_cause || ""} onChange={(e) => patchFinding(plan.id, idx, { root_cause: e.target.value })} className={inputCls} placeholder="Why did this happen?" />
+                                          </div>
+                                          <div>
+                                            <span className="block text-xs text-blue-200/60 mb-1">Corrective Action</span>
+                                            <textarea rows={4} value={f.corrective_action || ""} onChange={(e) => patchFinding(plan.id, idx, { corrective_action: e.target.value })} className={inputCls} placeholder="What will be done to fix it?" />
+                                          </div>
+                                          <div>
+                                            <span className="block text-xs text-blue-200/60 mb-1">Preventive Action</span>
+                                            <textarea rows={4} value={f.preventive_action || ""} onChange={(e) => patchFinding(plan.id, idx, { preventive_action: e.target.value })} className={inputCls} placeholder="How will recurrence be prevented?" />
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {f.evidence && f.evidence.length > 0 && (
+                                        <div className="mt-4">
+                                          <span className="block text-xs text-blue-200/60 mb-2">Supporting Evidence — click a picture to open it in a new tab</span>
+                                          <div className="flex flex-wrap gap-3">
+                                            {f.evidence.map((ev, ei) => {
+                                              const imgSrc = ev.startsWith("data:") ? ev : `/api/image-proxy?url=${encodeURIComponent(ev)}`;
+                                              return (
+                                                <a key={ei} href={imgSrc} target="_blank" rel="noopener noreferrer" title="Open picture in new tab"
+                                                  className="group relative block w-28 h-24 rounded-lg overflow-hidden border border-white/10 hover:border-amber-400/70 transition-colors">
+                                                  <img src={imgSrc} alt={`Evidence ${ei + 1}`} className="w-full h-full object-cover" />
+                                                  <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                    <svg className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                                  </span>
+                                                </a>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                                        <button onClick={() => handleSave(plan.id, idx)} disabled={busy} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                                          {busy ? "Saving..." : "Save Actions"}
+                                        </button>
+                                        {!f.capa_pdf_url && (
+                                          <button onClick={() => handleGeneratePdf(plan.id, idx)} disabled={genBusy || !!generatingKey} className="px-4 py-2 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-slate-900 text-sm font-semibold transition-colors disabled:opacity-50">
+                                            {genBusy ? "Generating & Saving..." : "Generate CAPA Report"}
+                                          </button>
+                                        )}
+                                        {f.detail && (
+                                          <span className="text-xs text-blue-200/50 max-w-md truncate">Finding: {f.detail}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
