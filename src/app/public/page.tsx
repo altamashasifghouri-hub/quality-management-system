@@ -1,44 +1,14 @@
 import Link from "next/link";
 import QmsBrand from "@/components/QmsBrand";
+import PublicCapaTree, { PublicPlan } from "@/components/PublicCapaTree";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type CapaFinding = {
-  type?: string;
-  department?: string;
-  detail?: string;
-  ncr_number?: string;
-  capa_pdf_url?: string;
-  observation?: string;
-};
-
-type Plan = {
-  id: string;
-  title: string;
-  branch_name: string;
-  document_number?: string;
-  date_of_plan?: string;
-  audit_period?: string;
+type Plan = PublicPlan & {
   status?: string;
   pdf_url?: string;
-  capa_findings: CapaFinding[];
 };
-
-function typeColor(type?: string) {
-  switch ((type || "").toLowerCase()) {
-    case "critical":
-      return "bg-red-500/20 border-red-500/40 text-red-300";
-    case "major":
-      return "bg-orange-500/20 border-orange-500/40 text-orange-300";
-    case "minor":
-      return "bg-yellow-500/20 border-yellow-500/40 text-yellow-300";
-    case "observation":
-      return "bg-cyan-500/20 border-cyan-500/40 text-cyan-300";
-    default:
-      return "bg-blue-500/20 border-blue-500/40 text-blue-300";
-  }
-}
 
 export default async function PublicView() {
   const supabase = await createClient();
@@ -60,21 +30,14 @@ export default async function PublicView() {
     audit_period: r.audit_period,
     status: r.status,
     pdf_url: r.pdf_url || null,
-    capa_findings: (r.findings || []).filter(
-      (f: any) => f.capa_pdf_url && f.detail && String(f.detail).trim() !== ""
-    ),
+    findings: r.findings || [],
   }));
 
   const auditReports = plans.filter((p) => p.pdf_url);
-  const capaCount = plans.reduce((sum, p) => sum + p.capa_findings.length, 0);
+  const capaCount = plans.reduce((sum, p) => sum + p.findings.length, 0);
 
   const formatDate = (d?: string) =>
     d ? new Date(d + (d.length === 10 ? "T00:00:00" : "")).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
-
-  const grouped = plans.reduce<Record<string, Plan[]>>((acc, p) => {
-    (acc[p.branch_name] = acc[p.branch_name] || []).push(p);
-    return acc;
-  }, {});
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
@@ -104,11 +67,11 @@ export default async function PublicView() {
             Audit & Capa Reports
           </h1>
           <p className="text-lg text-blue-200/70 max-w-2xl mx-auto">
-            Read-only access to published audit reports and corrective action
-            (CAPA) reports. {auditReports.length > 0 && (
+            Read-only access to audit findings and corrective action
+            (CAPA) reports. {plans.length > 0 && (
               <span>
-                {auditReports.length} audit {auditReports.length === 1 ? "report" : "reports"} and {capaCount} CAPA{" "}
-                {capaCount === 1 ? "report" : "reports"} are available.
+                {plans.length} audit {plans.length === 1 ? "plan" : "plans"} and {capaCount} finding{" "}
+                {capaCount === 1 ? "" : "s"} are available.
               </span>
             )}
           </p>
@@ -170,81 +133,12 @@ export default async function PublicView() {
             </svg>
             CAPA Reports
           </h2>
-          {capaCount === 0 ? (
-            <p className="text-blue-200/60">No CAPA reports have been published yet.</p>
+{capaCount === 0 ? (
+            <p className="text-blue-200/60">No audit findings have been published yet.</p>
           ) : (
-            Object.entries(grouped)
-              .filter(([, ps]) => ps.some((p) => p.capa_findings.length > 0))
-              .map(([branch, ps]) => (
-                <div key={branch} className="mb-8">
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-blue-300/80 mb-3">
-                    {branch}
-                  </h3>
-                  <div className="space-y-4">
-                    {ps
-                      .filter((p) => p.capa_findings.length > 0)
-                      .map((p) => (
-                        <div
-                          key={p.id}
-                          className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-xl p-5"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                            <h4 className="text-white font-semibold">{p.title}</h4>
-                            <span className="text-xs text-blue-200/60">
-                              {p.capa_findings.length} CAPA {p.capa_findings.length === 1 ? "report" : "reports"}
-                            </span>
-                          </div>
-                          <div className="space-y-2">
-                            {p.capa_findings.map((f, i) => (
-                              <div
-                                key={`${p.id}-${i}`}
-                                className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                                    {f.ncr_number && (
-                                      <span className="text-xs font-mono text-blue-200 border border-blue-400/30 bg-blue-500/10 rounded px-2 py-0.5">
-                                        {f.ncr_number}
-                                      </span>
-                                    )}
-                                    <span className={`text-xs font-medium border rounded px-2 py-0.5 ${typeColor(f.type)}`}>
-                                      {f.type || "General"}
-                                    </span>
-                                    {f.department && (
-                                      <span className="text-xs text-blue-300/70">{f.department}</span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-blue-100/80 line-clamp-2">
-                                    {String(f.detail || "").trim()}
-                                  </p>
-                                </div>
-                                <a
-                                  href={f.capa_pdf_url!}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-medium transition-all duration-200"
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25" />
-                                  </svg>
-                                  View CAPA
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              ))
+            <PublicCapaTree plans={plans} />
           )}
         </section>
-
-        <footer className="mt-16 pt-8 border-t border-white/10 text-center">
-          <Link href="/auth/signin" className="text-sm text-blue-300 hover:text-blue-200">
-            Sign in for full access
-          </Link>
-        </footer>
       </main>
     </div>
   );
