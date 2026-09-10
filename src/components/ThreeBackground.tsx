@@ -3,15 +3,82 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
+function makeGlowTexture(rgb: { r: number; g: number; b: number }) {
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, `rgba(${(rgb.r * 255) | 0},${(rgb.g * 255) | 0},${(rgb.b * 255) | 0},1)`);
+  g.addColorStop(0.35, `rgba(${(rgb.r * 255) | 0},${(rgb.g * 255) | 0},${(rgb.b * 255) | 0},0.35)`);
+  g.addColorStop(1, `rgba(${(rgb.r * 255) | 0},${(rgb.g * 255) | 0},${(rgb.b * 255) | 0},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(canvas);
+}
+
+function glowSprite(color: THREE.Color, scale: number) {
+  const mat = new THREE.SpriteMaterial({
+    map: makeGlowTexture({ r: color.r, g: color.g, b: color.b }),
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(scale, scale, 1);
+  return sprite;
+}
+
+function makeStars(count: number, size: number, radiusMin: number, radiusMax: number, palette: string[]) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const cols = new Float32Array(count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < count; i++) {
+    const r = radiusMin + Math.random() * (radiusMax - radiusMin);
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    pos[i * 3 + 2] = r * Math.cos(phi);
+    c.set(palette[(Math.random() * palette.length) | 0]);
+    const j = 0.4 + Math.random() * 0.6;
+    cols[i * 3] = c.r * j;
+    cols[i * 3 + 1] = c.g * j;
+    cols[i * 3 + 2] = c.b * j;
+  }
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+  const mat = new THREE.PointsMaterial({
+    size,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  return {
+    points: new THREE.Points(geo, mat),
+    geo,
+    mat,
+    dispose() {
+      geo.dispose();
+      mat.dispose();
+    },
+  };
+}
+
 export default function ThreeBackground() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const container = containerRef.current!;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x0a1530, 0.0035);
+    scene.fog = new THREE.FogExp2(0x04070f, 0.002);
 
-    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
     camera.position.set(0, 0, 9);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -23,64 +90,71 @@ export default function ThreeBackground() {
     canvas.style.zIndex = "-1";
     container.appendChild(canvas);
 
-    const particles = new THREE.BufferGeometry();
-    const count = 1600;
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const amber = new THREE.Color("#f59e0b");
-    const blue = new THREE.Color("#3b82f6");
-    const lightBlue = new THREE.Color("#60a5fa");
-    const palette = [blue, amber, lightBlue, blue];
-    for (let i = 0; i < count; i++) {
-      const r = 6 + Math.random() * 14;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i * 3 + 2] = r * Math.cos(phi) - 4;
-      const c = palette[i % palette.length];
-      const jitter = 0.5 + Math.random() * 0.5;
-      colors[i * 3] = c.r * jitter;
-      colors[i * 3 + 1] = c.g * jitter;
-      colors[i * 3 + 2] = c.b * jitter;
-    }
-    particles.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    particles.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const lens = new THREE.AmbientLight(0x93b4ff, 0.55);
+    const sun = new THREE.DirectionalLight(0xa8c6ff, 1.4);
+    sun.position.set(6, 4, 8);
+    scene.add(lens, sun);
 
-    const material = new THREE.PointsMaterial({
-      size: 0.045,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
+    const starPalette = ["#ffffff", "#bfd7ff", "#ffd9a8", "#e6f0ff"];
+    const stars = makeStars(1200, 0.035, 12, 42, starPalette);
+    const starsMid = makeStars(350, 0.06, 10, 30, starPalette);
+    const starsBig = makeStars(60, 0.1, 14, 34, ["#ffffff", "#ffedc7"]);
+    scene.add(stars.points, starsMid.points, starsBig.points);
+
+    const disposeList: { dispose: () => void }[] = [stars, starsMid, starsBig];
+    const planets: { mesh: THREE.Mesh; spin: number; tilt: number; radius: number }[] = [];
+
+    const planetDefs = [
+      { color: "#c2603a", size: 0.16, radius: 2.6, spin: 0.4 },
+      { color: "#d0a06a", size: 0.22, radius: 3.6, spin: 0.3, ring: true },
+      { color: "#6fd3de", size: 0.19, radius: 4.7, spin: 0.24 },
+      { color: "#a78bfa", size: 0.14, radius: 5.6, spin: 0.18 },
+    ];
+
+    planetDefs.forEach((def) => {
+      const tilt = (Math.random() - 0.5) * 0.9;
+      const group = new THREE.Group();
+      group.rotation.z = tilt;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(def.size, 24, 24),
+        new THREE.MeshPhongMaterial({ color: def.color, shininess: 30 })
+      );
+      mesh.position.x = def.radius;
+      group.add(mesh);
+      const glow = glowSprite(new THREE.Color(def.color), def.size * 7);
+      mesh.add(glow);
+      disposeList.push(mesh.geometry, mesh.material as THREE.Material, glow.material);
+      if (def.ring) {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(def.size * 1.5, def.size * 2.6, 40),
+          new THREE.MeshBasicMaterial({
+            color: def.color,
+            transparent: true,
+            opacity: 0.5,
+            side: THREE.DoubleSide,
+          })
+        );
+        ring.rotation.x = Math.PI / 2.4;
+        ring.rotation.z = 0.4;
+        mesh.add(ring);
+        disposeList.push(ring.geometry, ring.material as THREE.Material);
+      }
+      scene.add(group);
+      planets.push({ mesh, spin: def.spin, tilt, radius: def.radius });
     });
-    const pointCloud = new THREE.Points(particles, material);
-    scene.add(pointCloud);
 
-    const core = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(1.9, 2),
-      new THREE.MeshBasicMaterial({
-        color: "#f59e0b",
-        wireframe: true,
-        transparent: true,
-        opacity: 0.06,
-      })
+    const moonGroup = new THREE.Group();
+    moonGroup.rotation.z = 0.35;
+    const moonMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 24, 24),
+      new THREE.MeshPhongMaterial({ color: "#c9d4e8", shininess: 40, emissive: new THREE.Color("#2a3a5c") })
     );
-    core.position.set(2.6, -0.8, -4);
-    scene.add(core);
-
-    const core2 = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(1.3, 1),
-      new THREE.MeshBasicMaterial({
-        color: "#3b82f6",
-        wireframe: true,
-        transparent: true,
-        opacity: 0.08,
-      })
-    );
-    core2.position.set(-3, 1.4, -5);
-    scene.add(core2);
+    moonMesh.position.x = 4.2;
+    moonGroup.add(moonMesh);
+    const moonGlow = glowSprite(new THREE.Color("#c9d4e8"), 0.9);
+    moonMesh.add(moonGlow);
+    scene.add(moonGroup);
+    disposeList.push(moonMesh.geometry, moonMesh.material as THREE.Material, moonGlow.material);
 
     let width = 0;
     let height = 0;
@@ -107,14 +181,23 @@ export default function ThreeBackground() {
     const clock = new THREE.Clock();
     function tick() {
       const t = clock.getElapsedTime();
-      pointCloud.rotation.y = t * 0.035;
-      pointCloud.rotation.x = Math.sin(t * 0.05) * 0.06;
-      core.rotation.x = t * 0.12;
-      core.rotation.y = t * 0.16;
-      core2.rotation.x = -t * 0.1;
-      core2.rotation.y = t * 0.13;
-      camera.position.x += (mouse.x * 1.6 - camera.position.x) * 0.03;
-      camera.position.y += (-mouse.y * 1.1 - camera.position.y) * 0.03;
+      stars.points.rotation.y = t * 0.004;
+      stars.points.rotation.x = Math.sin(t * 0.02) * 0.01;
+      starsMid.points.rotation.y = -t * 0.006;
+      starsBig.points.rotation.y = t * 0.003 + Math.sin(t * 0.4) * 0.02;
+
+      planets.forEach((p) => {
+        const angle = t * p.spin;
+        p.mesh.position.x = Math.cos(angle) * p.radius;
+        p.mesh.position.z = Math.sin(angle) * p.radius;
+        p.mesh.rotation.y = t * (p.spin + 1.2);
+      });
+
+      moonGroup.rotation.y = t * 0.55;
+      moonMesh.rotation.y = t * 1.5;
+
+      camera.position.x += (mouse.x * 1.4 - camera.position.x) * 0.03;
+      camera.position.y += (-mouse.y * 1.0 - camera.position.y) * 0.03;
       camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
@@ -125,12 +208,10 @@ export default function ThreeBackground() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("pointermove", onPointer);
-      particles.dispose();
-      material.dispose();
-      core.geometry.dispose();
-      (core.material as THREE.Material).dispose();
-      core2.geometry.dispose();
-      (core2.material as THREE.Material).dispose();
+      disposeList.forEach((d) => d.dispose());
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Sprite) obj.material.dispose();
+      });
       renderer.dispose();
       canvas.remove();
     };
