@@ -543,6 +543,62 @@ export default function CapaPage() {
     }
   }
 
+  async function handleDownloadCompiledPdf() {
+    const selected = plans.flatMap((p) => p.findings.map((f, i) => ({ plan: p, finding: f, planId: p.id, idx: i })))
+      .filter((t) => selectedKeys.has(`${t.planId}::${t.idx}`));
+    const withDetail = selected.filter((t) => t.finding.detail.trim());
+    if (withDetail.length === 0) return showErr("Select at least one CAPA with a description.");
+    if (generatingKey) return;
+    setGeneratingKey("compiled");
+    setError("");
+
+    try {
+      const existing = plans.flatMap((p) => p.findings).map((f) => f.ncr_number || "").filter(Boolean);
+      const ncrAssignments = new Map<string, { planId: string; idx: number; ncr: string }>();
+      const { data: authData } = await supabase.auth.getUser();
+      const userName = authData.user?.user_metadata?.full_name || settings.ceo_name || settings.hr_name || "Authorized Signatory";
+
+      const doc = new jsPDF();
+      let first = true;
+      for (const t of withDetail) {
+        let ncr = t.finding.ncr_number;
+        if (!ncr) {
+          ncr = genNcrNumber(t.plan.branch_name, existing);
+          existing.push(ncr);
+          ncrAssignments.set(`${t.planId}::${t.idx}`, { planId: t.planId, idx: t.idx, ncr });
+        }
+        if (!first) doc.addPage();
+        first = false;
+        await renderCapaReport(doc, t.plan, t.finding, ncr, userName, t.plan.signature || SIG_DEFAULT);
+      }
+
+      for (const [, a] of ncrAssignments) {
+        const pi = planIndex(a.planId);
+        if (pi < 0) continue;
+        const plan = plans[pi];
+        const updated = plan.findings.map((f, i) => (i === a.idx ? { ...f, ncr_number: a.ncr } : f));
+        const err = await persistFindings(a.planId, updated);
+        if (err) return showErr(err.message);
+        setPlans((prev) => prev.map((p) => (p.id === a.planId ? { ...p, findings: updated } : p)));
+      }
+
+      const blob = doc.output("blob");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Compiled_CAPA_Reports_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showMsg(`Downloaded ${withDetail.length} compiled CAPA report${withDetail.length !== 1 ? "s" : ""} as one PDF.`);
+    } catch (e: any) {
+      showErr(e?.message || "Could not compile CAPA PDF download.");
+    } finally {
+      setGeneratingKey(null);
+    }
+  }
+
   const branchGroups: { name: string; plans: CapaPlan[] }[] = [];
   const groupMap = new Map<string, CapaPlan[]>();
   plans.forEach((p) => {
@@ -582,9 +638,12 @@ export default function CapaPage() {
               {allSelected ? "Clear Selection" : "Select All CAPAs"}
             </button>
             <button onClick={handleDownloadZip} disabled={selectedKeys.size === 0 || !!generatingKey} className="px-5 py-2.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
-              {generatingKey === "zip" ? "Preparing ZIP..." : `Download Selected (${selectedKeys.size}) CAPAs as ZIP`}
+              {generatingKey === "zip" ? "Preparing ZIP..." : `Download Selected (${selectedKeys.size}) as ZIP`}
             </button>
-            <span className="text-xs text-blue-200/40">Tick the checkboxes on the CAPAs you want, then download them all together as a ZIP.</span>
+            <button onClick={handleDownloadCompiledPdf} disabled={selectedKeys.size === 0 || !!generatingKey} className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+              {generatingKey === "compiled" ? "Compiling PDF..." : "Download Compiled PDF"}
+            </button>
+            <span className="text-xs text-blue-200/40">Tick the checkboxes on the CAPAs you want, then download them as one PDF or as a ZIP.</span>
           </div>
         )}
 
