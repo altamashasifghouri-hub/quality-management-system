@@ -661,7 +661,7 @@ export default function CapaPage() {
   const allSelected = openKeys.length > 0 && openKeys.every((k) => selectedKeys.has(k));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-16">
         <div className="mb-8">
@@ -755,7 +755,7 @@ export default function CapaPage() {
                                   const busy = savingKey === key;
                                   const genBusy = generatingKey === key;
                                   return (
-                                    <div key={`${plan.id}-${idx}`} className={`bg-white/5 backdrop-blur-sm border rounded-2xl p-5 ${f.capa_pdf_url ? "border-green-500/30" : "border-white/10"}`}>
+                                    <div key={`${plan.id}-${idx}`} className={`bg-gradient-to-br from-blue-500/10 via-slate-800/40 to-slate-900/60 backdrop-blur-md border rounded-2xl p-5 ${f.capa_pdf_url ? "border-green-500/30" : "border-blue-400/20"}`}>
                                       <div className="flex flex-wrap items-center gap-2 mb-4">
                                         <label className="flex items-center cursor-pointer" title="Select to include in ZIP download">
                                           <input type="checkbox" checked={selectedKeys.has(key)} onChange={() => toggleSelect(key)} className="w-4 h-4 accent-amber-500 cursor-pointer" />

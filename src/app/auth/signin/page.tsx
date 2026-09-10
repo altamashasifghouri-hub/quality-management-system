@@ -34,7 +34,7 @@ export default function SignIn() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900/80 via-blue-900/40 to-slate-900/80 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900/60 to-slate-900 px-4">
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-3 mb-6">
@@ -60,7 +60,7 @@ export default function SignIn() {
           </p>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-8 shadow-2xl">
+        <div className="bg-gradient-to-br from-blue-600/20 via-blue-900/30 to-slate-900/40 backdrop-blur-md border border-blue-400/25 rounded-2xl p-8 shadow-2xl">
           <form onSubmit={handleSignIn} className="space-y-5">
             {error && (
               <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3">

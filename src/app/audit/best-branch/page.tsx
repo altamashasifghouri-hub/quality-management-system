@@ -90,7 +90,7 @@ export default function BestBranch() {
   const labelCls = "block text-sm text-blue-200/60 mb-1";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <Navbar />
       <main className="max-w-5xl mx-auto px-6 py-16">
         <div className="mb-8">
@@ -105,7 +105,7 @@ export default function BestBranch() {
 
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
 
-        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 mb-8">
+        <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>From</label>

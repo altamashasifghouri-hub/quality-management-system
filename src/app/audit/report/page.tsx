@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 
 export default function AuditReport() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <Navbar />
 
       <main className="max-w-5xl mx-auto px-6 py-16">
@@ -23,7 +23,7 @@ export default function AuditReport() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Link href="/audit/report/iso9001">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all duration-200 cursor-pointer group text-center">
+            <div className="bg-gradient-to-br from-blue-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-blue-400/25 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-blue-300/50 hover:from-blue-500/25 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4 group-hover:bg-blue-600/30 transition-colors">
                 <span className="text-blue-400 font-bold text-sm">9001</span>
               </div>
@@ -31,7 +31,7 @@ export default function AuditReport() {
             </div>
           </Link>
           <Link href="/audit/report/internal">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all duration-200 cursor-pointer group text-center">
+            <div className="bg-gradient-to-br from-blue-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-blue-400/25 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-blue-300/50 hover:from-blue-500/25 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4 group-hover:bg-blue-600/30 transition-colors">
                 <span className="text-blue-400 font-bold text-sm">INT</span>
               </div>

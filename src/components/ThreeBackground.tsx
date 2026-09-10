@@ -9,7 +9,7 @@ export default function ThreeBackground() {
   useEffect(() => {
     const container = containerRef.current!;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x0d1b2e, 0.0035);
+    scene.fog = new THREE.FogExp2(0x0a1530, 0.0035);
 
     const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
     camera.position.set(0, 0, 9);
@@ -29,8 +29,8 @@ export default function ThreeBackground() {
     const colors = new Float32Array(count * 3);
     const amber = new THREE.Color("#f59e0b");
     const blue = new THREE.Color("#3b82f6");
-    const white = new THREE.Color("#e2e8f0");
-    const palette = [amber, blue, white, amber];
+    const lightBlue = new THREE.Color("#60a5fa");
+    const palette = [blue, amber, lightBlue, blue];
     for (let i = 0; i < count; i++) {
       const r = 6 + Math.random() * 14;
       const theta = Math.random() * Math.PI * 2;

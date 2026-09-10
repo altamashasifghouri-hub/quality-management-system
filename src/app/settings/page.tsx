@@ -121,7 +121,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <div className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-3">
@@ -148,7 +148,7 @@ export default function Settings() {
 
         {sessionUser && (
           <div className="space-y-6">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl">
+            <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 shadow-2xl">
               <h2 className="text-lg font-semibold text-white mb-1">Company Settings</h2>
               <p className="text-xs text-blue-200/60 mb-4">Names shown on audit report distribution (shared across the system)</p>
               <form onSubmit={handleSaveCompany} className="space-y-4">
@@ -182,7 +182,7 @@ export default function Settings() {
               </form>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl">
+            <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 shadow-2xl">
               <h2 className="text-lg font-semibold text-white mb-4">Profile Name</h2>
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 <input
@@ -202,7 +202,7 @@ export default function Settings() {
               </form>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl">
+            <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 shadow-2xl">
               <h2 className="text-lg font-semibold text-white mb-4">Change Email</h2>
               <form onSubmit={handleChangeEmail} className="space-y-4">
                 <input
@@ -222,7 +222,7 @@ export default function Settings() {
               </form>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl">
+            <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 shadow-2xl">
               <h2 className="text-lg font-semibold text-white mb-4">Change Password</h2>
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <input

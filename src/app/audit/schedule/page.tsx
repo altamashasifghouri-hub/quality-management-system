@@ -184,7 +184,7 @@ export default function AuditSchedulePage() {
   const selectedDaySchedules = selectedDay ? schedulesByDate[selectedDay] || [] : [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-16">
         <div className="mb-8">
@@ -200,7 +200,7 @@ export default function AuditSchedulePage() {
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-          <div className="lg:col-span-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+          <div className="lg:col-span-2 bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <button onClick={() => { setCalMonth(calMonth === 0 ? 11 : calMonth - 1); setCalYear(calMonth === 0 ? calYear - 1 : calYear); setSelectedDay(null); }} className="p-2 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
@@ -247,7 +247,7 @@ export default function AuditSchedulePage() {
             </div>
           </div>
 
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+          <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-white mb-3">{selectedDay ? `Audits on ${selectedDay}` : "Select a day"}</h3>
             {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day with colored tiles to see scheduled audits.</p>}
             {selectedDay && selectedDaySchedules.length === 0 && <p className="text-xs text-blue-200/40">No audits scheduled for this day.</p>}
@@ -269,7 +269,7 @@ export default function AuditSchedulePage() {
           </div>
         </div>
 
-        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+        <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-white mb-4">Schedule Audit</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
@@ -321,7 +321,7 @@ export default function AuditSchedulePage() {
           </div>
         </div>
 
-        <div className="mt-10 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+        <div className="mt-10 bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-white mb-4">All Scheduled Audits</h2>
           {loading ? (
             <div className="flex justify-center py-8"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>

@@ -3,7 +3,7 @@ import QmsBrand from "@/components/QmsBrand";
 
 export default function PublicView() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <nav className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
@@ -52,7 +52,7 @@ export default function PublicView() {
           ].map((item) => (
             <div
               key={item.title}
-              className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6"
+              className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-xl p-6"
             >
               <div className="inline-flex items-center justify-center w-11 h-11 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4">
                 <svg

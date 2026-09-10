@@ -31,7 +31,7 @@ export default function Navbar() {
   }, []);
 
   return (
-    <nav className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
+    <nav className="border-b border-blue-500/20 bg-blue-950/60 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
         <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
           <span className="text-white font-semibold text-sm sm:text-base truncate">Quality Management System</span>
@@ -56,7 +56,7 @@ export default function Navbar() {
             </button>
 
             {open && (
-              <div className="absolute right-0 mt-2 w-56 bg-slate-800/95 backdrop-blur-sm border border-white/10 rounded-xl shadow-2xl py-2 z-50">
+              <div className="absolute right-0 mt-2 w-56 bg-blue-950/95 backdrop-blur-md border border-blue-500/25 rounded-xl shadow-2xl py-2 z-50">
                 <Link
                   href="/settings"
                   onClick={() => setOpen(false)}

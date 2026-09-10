@@ -267,7 +267,7 @@ export default function AuditFindings() {
   branchMap.forEach((list, name) => branches.push({ name, plans: list }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-16">
         <div className="mb-8">

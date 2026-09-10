@@ -192,7 +192,7 @@ export default function Iso9001Records() {
   const labelCls = "block text-sm text-blue-200/60 mb-1";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900/90 via-blue-900/65 to-slate-900/95">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900/80 to-slate-900">
       <Navbar />
       <main className="max-w-5xl mx-auto px-6 py-16">
         <div className="mb-8">
@@ -216,7 +216,7 @@ export default function Iso9001Records() {
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
         ) : (
           <div className="space-y-6">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 space-y-5">
+            <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 space-y-5">
               <h2 className="text-xl font-bold text-white">Record an ISO 9001 audit</h2>
 
               <div>
@@ -286,7 +286,7 @@ export default function Iso9001Records() {
             </div>
 
             {selectedPlan && selectedPlan.findings.length > 0 && (
-              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+              <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
                 <h2 className="text-lg font-semibold text-white mb-3">Aligned findings for this audit</h2>
                 {(() => {
                   const s = severities(selectedPlan.findings);
