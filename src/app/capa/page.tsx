@@ -173,14 +173,20 @@ export default function CapaPage() {
       supabase.from("audit_schedules").select("*"),
     ]);
     const branchName = new Map<string, string>((b || []).map((r: any) => [r.id, r.name]));
+    const branchByStored = new Map<string, string>((b || []).map((r: any) => [String(r.name).toLowerCase(), r.name]));
     const schedBranch = new Map<string, string>((schedData || []).map((sc: any) => [sc.id, branchName.get(sc.branch_id) || ""]));
+    const resolveBranch = (branchId: string | null | undefined, scheduleId: string | null | undefined) =>
+      branchName.get(branchId || "") ||
+      schedBranch.get(scheduleId || "") ||
+      branchByStored.get(String(branchId || "").toLowerCase()) ||
+      "Unassigned";
     const intPlans: CapaPlan[] = (p || []).map((r: any) => ({
-      id: r.id, title: r.title, branch_id: r.branch_id, branch_name: branchName.get(r.branch_id) || "Unassigned",
+      id: r.id, title: r.title, branch_id: r.branch_id, branch_name: resolveBranch(r.branch_id, r.schedule_id),
       document_number: r.document_number, date_of_plan: r.date_of_plan, audit_period: r.audit_period,
       signature: r.signature, prepared_by: r.prepared_by, source: "internal", findings: r.findings || [],
     }));
     const isoSrc: CapaPlan[] = (isoPlans || []).map((r: any) => ({
-      id: r.id, title: r.title, branch_id: r.branch_id, branch_name: schedBranch.get(r.schedule_id) || "Unassigned",
+      id: r.id, title: r.title, branch_id: r.branch_id, branch_name: resolveBranch(r.branch_id, r.schedule_id),
       document_number: r.document_number, date_of_plan: r.date_of_plan, audit_period: r.audit_period,
       signature: r.signature || null, prepared_by: r.prepared_by, source: "iso", findings: r.findings || [],
     }));
