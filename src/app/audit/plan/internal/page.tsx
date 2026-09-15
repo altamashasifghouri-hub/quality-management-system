@@ -73,6 +73,7 @@ const APPROACH_ITEMS = [
   "Data analytics from PMS, POS and accounting systems",
   "Surprise cash counts and inventory counts",
   "Staff interviews",
+  "Monitor employee behavior during operation",
   "Physical verification of assets and security controls",
 ];
 

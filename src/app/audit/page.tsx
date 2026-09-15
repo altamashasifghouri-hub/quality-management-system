@@ -92,6 +92,16 @@ export default function AuditManagement() {
               <h3 className="text-white font-semibold mb-1">Root Causes and CAPA</h3>
             </div>
           </Link>
+          <Link href="/timelines">
+            <div className="bg-gradient-to-br from-amber-500/10 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-amber-500/30 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-amber-400/50 hover:from-amber-500/20 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-amber-500/20 border border-amber-500/30 mb-4 group-hover:bg-amber-500/30 transition-colors">
+                <svg className="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+              </div>
+              <h3 className="text-white font-semibold mb-1">Timelines</h3>
+            </div>
+          </Link>
         </div>
       </main>
     </div>
