@@ -8,6 +8,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import JSZip from "jszip";
 import { loadPdfImage } from "@/lib/pdf-image";
+import { deleteDriveFileByUrl } from "@/lib/drive-file";
 
 interface CapaFinding {
   department: string;
@@ -15,6 +16,7 @@ interface CapaFinding {
   detail: string;
   recommendation?: string;
   evidence?: string[];
+  capa_evidence?: string[];
   observation?: string;
   root_cause?: string;
   corrective_action?: string;
@@ -255,6 +257,49 @@ export default function CapaPage() {
     showMsg("Root cause and actions saved for this finding.");
   }
 
+  async function handleAddCapaEvidence(planId: string, idx: number, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const pi = planIndex(planId);
+    if (pi < 0) return;
+    const plan = plans[pi];
+    const urls: string[] = [];
+    setSavingKey(`${planId}::${idx}`);
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) { showErr(`${file.name} is not an image.`); continue; }
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        if (errJson?.error === "not_connected") { setSavingKey(null); return showErr("Connect Google Drive first from the Storage page."); }
+        showErr(errJson?.error?.message || `${file.name} upload failed.`);
+        continue;
+      }
+      const json = await res.json();
+      if (json.url) urls.push(json.url);
+    }
+    if (urls.length === 0) { setSavingKey(null); return; }
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, capa_evidence: [...(f.capa_evidence || []), ...urls] } : f));
+    setPlans((prev) => prev.map((p) => (p.id === planId ? { ...p, findings: updated } : p)));
+    const err = await persistFindings(planId, updated);
+    setSavingKey(null);
+    if (err) return showErr(err.message);
+    showMsg(`${urls.length} picture${urls.length !== 1 ? "s" : ""} added to CAPA.`);
+  }
+
+  async function removeCapaEvidence(planId: string, idx: number, evIdx: number) {
+    const pi = planIndex(planId);
+    if (pi < 0) return;
+    const plan = plans[pi];
+    const removedUrl = plan.findings[idx].capa_evidence?.[evIdx] || null;
+    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, capa_evidence: (f.capa_evidence || []).filter((_, j) => j !== evIdx) } : f));
+    setPlans((prev) => prev.map((p) => (p.id === planId ? { ...p, findings: updated } : p)));
+    const err = await persistFindings(planId, updated);
+    if (err) return showErr(err.message);
+    if (removedUrl) await deleteDriveFileByUrl(removedUrl).catch(() => {});
+    showMsg("CAPA picture removed.");
+  }
+
   async function renderCapaReport(doc: jsPDF, plan: CapaPlan, finding: CapaFinding, ncr: string, userName: string, sigUrl: string) {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -345,10 +390,11 @@ export default function CapaPage() {
     (pa.length ? pa : ["Not recorded yet."]).forEach(bullet);
 
     sectionTitle("6. Supporting Evidence");
-    if (finding.evidence && finding.evidence.length > 0) {
+    const allEvidence = [...(finding.evidence || []), ...(finding.capa_evidence || [])];
+    if (allEvidence.length > 0) {
       let col = 0;
       let rowY = y;
-      for (const url of finding.evidence) {
+      for (const url of allEvidence) {
         try {
           const dataUrl = await loadImageData(url);
           const w = 70;
@@ -817,6 +863,34 @@ export default function CapaPage() {
                                           </div>
                                         </div>
                                       )}
+
+                                      {(f.capa_evidence || []).length > 0 && (
+                                        <div className="mt-4">
+                                          <span className="block text-xs text-emerald-200/60 mb-2">CAPA Pictures — added from this page</span>
+                                          <div className="flex flex-wrap gap-3">
+                                            {(f.capa_evidence || []).map((ev, ei) => {
+                                              const imgSrc = ev.startsWith("data:") ? ev : `/api/image-proxy?url=${encodeURIComponent(ev)}`;
+                                              return (
+                                                <div key={ei} className="group relative w-28 h-24 rounded-lg overflow-hidden border border-emerald-400/30">
+                                                  <a href={imgSrc} target="_blank" rel="noopener noreferrer" title="Open picture in new tab">
+                                                    <img src={imgSrc} alt={`CAPA picture ${ei + 1}`} className="w-full h-full object-cover" />
+                                                  </a>
+                                                  <button onClick={() => removeCapaEvidence(plan.id, idx, ei)} title="Remove picture"
+                                                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600/90 hover:bg-red-500 text-white text-xs leading-none flex items-center justify-center">
+                                                    ✕
+                                                  </button>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                      <div className="mt-3">
+                                        <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-medium cursor-pointer transition-colors">
+                                          + Add CAPA Picture(s)
+                                          <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { handleAddCapaEvidence(plan.id, idx, e.target.files); e.target.value = ""; }} />
+                                        </label>
+                                      </div>
 
                                       <div className="mt-4 flex flex-wrap items-center gap-3">
                                         <button onClick={() => handleSave(plan.id, idx)} disabled={busy} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
