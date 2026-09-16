@@ -495,9 +495,12 @@ y = ey + evThumbMaxH + 8;
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
+      const filename = `${sanitizeFile(branchName)}_ISO_Audit_Report.pdf`;
+      doc.save(filename);
+
       const blob = doc.output("blob");
       const formData = new FormData();
-      formData.append("file", blob, `${sanitizeFile(branchName)}_ISO_Audit_Report.pdf`);
+      formData.append("file", blob, filename);
       formData.append("folderKind", "report");
       const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
       if (!res.ok) {
@@ -693,6 +696,9 @@ y = ey + evThumbMaxH + 8;
                                         <div className="ml-auto flex items-center gap-2">
                                           {plan.pdf_url ? (
                                             <>
+                                              <button onClick={() => generateReportPdf(plan)} disabled={pdfSaving} className="px-3 py-1.5 text-xs rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white transition-colors">
+                                                {pdfSaving ? "Generating..." : "Download PDF"}
+                                              </button>
                                               <a href={plan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">View PDF</a>
                                               <button onClick={() => handleDeletePlanReport(plan)} className="px-3 py-1.5 text-xs rounded-lg bg-red-600/80 hover:bg-red-600 text-white">Delete Report</button>
                                             </>

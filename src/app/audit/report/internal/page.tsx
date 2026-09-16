@@ -648,11 +648,14 @@ export default function InternalAuditReport() {
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
+      const filename = `${sanitizeFile(branch?.name || plan?.branch_name || "Internal")}_Internal_Audit_Report.pdf`;
+      doc.save(filename);
+
       setPdfSaving(true);
       try {
         const blob = doc.output("blob");
         const formData = new FormData();
-        formData.append("file", blob, `${sanitizeFile(branch?.name || plan?.branch_name || "Internal")}_Internal_Audit_Report.pdf`);
+        formData.append("file", blob, filename);
         formData.append("folderKind", "report");
         const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
         if (res.ok) {
@@ -929,13 +932,11 @@ export default function InternalAuditReport() {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h2 className="text-xl font-bold text-white">Internal Audit Report</h2>
               <div className="flex flex-wrap gap-2">
-                {!viewingReport.pdf_url && (
-                  <button onClick={() => generatePdf(viewingReport)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                    {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : "Generate & Save PDF"}
+                <button onClick={() => generatePdf(viewingReport)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                    {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : viewingReport.pdf_url ? "Download PDF" : "Generate & Save PDF"}
                   </button>
-                )}
                 {viewingReport.pdf_url && (
-                  <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors">
+                  <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
                     View Saved PDF
                   </a>
                 )}
