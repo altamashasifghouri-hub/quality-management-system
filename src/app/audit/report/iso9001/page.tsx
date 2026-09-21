@@ -417,9 +417,12 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
             if (y + 8 > maxY) { doc.addPage(); y = margin; }
             doc.setFont("helvetica", "bold");
             doc.setTextColor(29, 78, 216);
-            doc.text(attr, margin, y);
+            for (const ln of doc.splitTextToSize(attr, maxWidth)) {
+              if (y + 6 > maxY) { doc.addPage(); y = margin; }
+              doc.text(ln, margin, y); y += 6;
+            }
             doc.setFont("helvetica", "normal");
-            y += 6;
+            y += 3;
             doc.setFontSize(10);
             doc.setTextColor(30, 41, 59);
             for (const ln of doc.splitTextToSize(f.detail, maxWidth)) {
