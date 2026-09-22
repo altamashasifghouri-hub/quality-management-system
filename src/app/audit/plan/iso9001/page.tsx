@@ -377,9 +377,12 @@ export default function AuditPlanPage() {
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
+      const filename = `${sanitizeFile(branchName)}_ISO_Audit_Plan.pdf`;
+      doc.save(filename);
+
       const blob = doc.output("blob");
       const formData = new FormData();
-      formData.append("file", blob, `${sanitizeFile(branchName)}_ISO_Audit_Plan.pdf`);
+      formData.append("file", blob, filename);
       const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
@@ -452,7 +455,12 @@ export default function AuditPlanPage() {
             <button onClick={() => startEdit(plan)} className="text-xs text-blue-300 hover:text-white">Edit</button>
             <button onClick={() => { if (confirm("Delete?")) handleDeletePlan(plan.id); }} className="text-xs text-red-400 hover:text-red-300">Delete</button>
             {plan.pdf_url ? (
-              <a href={plan.pdf_url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg">View PDF</a>
+              <>
+                <button onClick={(e) => { e.stopPropagation(); generatePdf(plan); }} disabled={pdfSaving} className="text-xs bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg">
+                  {pdfSaving ? "Generating..." : "Download PDF"}
+                </button>
+                <a href={plan.pdf_url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg">View PDF</a>
+              </>
             ) : (
               <button onClick={(e) => { e.stopPropagation(); generatePdf(plan); }} disabled={pdfSaving} className="text-xs bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg">
                 {pdfSaving ? "Saving..." : "Save to Google Drive"}

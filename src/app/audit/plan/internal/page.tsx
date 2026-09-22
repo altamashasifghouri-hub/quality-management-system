@@ -478,11 +478,14 @@ export default function InternalAuditPlan() {
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
+      const filename = `${sanitizeFile(plan.branch_name || "Internal")}_Audit_Plan.pdf`;
+      doc.save(filename);
+
       setPdfSaving(true);
       try {
         const blob = doc.output("blob");
         const formData = new FormData();
-        formData.append("file", blob, `${sanitizeFile(plan.branch_name || "Internal")}_Audit_Plan.pdf`);
+        formData.append("file", blob, filename);
         const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
         if (res.ok) {
           const json = await res.json();
@@ -791,7 +794,7 @@ export default function InternalAuditPlan() {
               <h2 className="text-xl font-bold text-white">Audit Plan Document</h2>
               <div className="flex gap-2">
                 <button onClick={() => generatePdf(viewPlan)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                  {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : "Save to Google Drive"}
+                  {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : viewPlan.pdf_url ? "Download PDF" : "Save to Google Drive"}
                 </button>
                 {viewPlan.pdf_url && (
                   <a href={viewPlan.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
