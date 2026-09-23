@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface Finding {
   department?: string;
@@ -29,6 +31,7 @@ interface Plan {
 interface Issue {
   planId: string;
   planTitle: string;
+  branchName: string;
   auditDate: string | null;
   finding: Finding;
 }
@@ -112,17 +115,27 @@ export default function ProgressPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const selected = activeBranch ? groups.filter((g) => g.name === activeBranch) : groups;
-  const issues: Issue[] = selected.flatMap((g) =>
-    g.plans.flatMap((pl) =>
-      pl.findings.map((f): Issue => ({ planId: pl.id, planTitle: pl.title, auditDate: pl.date_of_plan || pl.created_at, finding: f }))
-    )
-  );
-  issues.sort((a, z) => {
-    const ar = a.finding.resolved === true ? 1 : 0;
-    const zr = z.finding.resolved === true ? 1 : 0;
-    if (ar !== zr) return ar - zr;
-    return (z.finding.resolved_at || "").localeCompare(a.finding.resolved_at || "");
-  });
+  function collectIssues(gs: { name: string; plans: Plan[] }[]): Issue[] {
+    const list = gs.flatMap((g) =>
+      g.plans.flatMap((pl) =>
+        pl.findings.map((f): Issue => ({
+          planId: pl.id,
+          planTitle: pl.title,
+          branchName: g.name,
+          auditDate: pl.date_of_plan || pl.created_at,
+          finding: f,
+        }))
+      )
+    );
+    list.sort((a, z) => {
+      const ar = a.finding.resolved === true ? 1 : 0;
+      const zr = z.finding.resolved === true ? 1 : 0;
+      if (ar !== zr) return ar - zr;
+      return (z.finding.resolved_at || "").localeCompare(a.finding.resolved_at || "");
+    });
+    return list;
+  }
+  const issues = collectIssues(selected);
 
   const totals = groups.reduce(
     (acc, g) => {
@@ -134,6 +147,76 @@ export default function ProgressPage() {
   );
   const unresolved = totals.total - totals.resolved;
   const pct = totals.total ? Math.round((totals.resolved / totals.total) * 100) : 0;
+
+  function downloadPdf() {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 18;
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Issues Progress Report", pageWidth / 2, margin, { align: "center" });
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`, pageWidth / 2, margin + 6, { align: "center" });
+
+    autoTable(doc, {
+      startY: margin + 12,
+      theme: "grid",
+      head: [["Metric", "Value"]],
+      body: [
+        ["Total issues", String(totals.total)],
+        ["Resolved", String(totals.resolved)],
+        ["Unresolved", String(unresolved)],
+        ["Resolved %", `${pct}%`],
+      ],
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      columnStyles: { 0: { fontStyle: "bold", cellWidth: 60 } },
+    });
+    let y = (doc as any).lastAutoTable.finalY + 10;
+
+    doc.setFontSize(12);
+    doc.setTextColor(29, 78, 216);
+    doc.text("Branch breakdown", margin, y);
+    y += 6;
+    autoTable(doc, {
+      startY: y,
+      theme: "grid",
+      head: [["Branch", "Issues", "Resolved", "Unresolved", "Resolved %"]],
+      body: groups.map((g) => {
+        const n = g.plans.reduce((s, pl) => s + pl.findings.length, 0);
+        const r = g.plans.reduce((s, pl) => s + pl.findings.filter((f) => f.resolved === true).length, 0);
+        const p = n ? Math.round((r / n) * 100) : 0;
+        return [g.name, String(n), String(r), String(n - r), `${p}%`];
+      }),
+      styles: { fontSize: 9, cellPadding: 2.5 },
+    });
+    y = (doc as any).lastAutoTable.finalY + 10;
+
+    const allIssues = collectIssues(groups);
+    doc.setFontSize(12);
+    doc.setTextColor(29, 78, 216);
+    doc.text("Issues", margin, y);
+    y += 4;
+    autoTable(doc, {
+      startY: y,
+      theme: "grid",
+      head: [["#", "Issue", "Branch", "Department", "Type", "Audit date", "Resolved date & time", "Status"]],
+      body: allIssues.map((it, i) => [
+        String(i + 1),
+        it.finding.detail,
+        it.branchName,
+        it.finding.department || "—",
+        it.finding.type || "Medium",
+        fmtDate(it.auditDate),
+        it.finding.resolved === true ? fmt12h(it.finding.resolved_at) : "—",
+        it.finding.resolved === true ? "Resolved" : "Unresolved",
+      ]),
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 1: { cellWidth: 70 } },
+    });
+
+    doc.save("QMS_Issues_Progress_Report.pdf");
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
@@ -148,8 +231,22 @@ export default function ProgressPage() {
           </Link>
         </div>
 
-        <h1 className="text-3xl font-bold text-white mb-2">Progress</h1>
-        <p className="text-blue-200/60 mb-10">Resolved vs unresolved issues across branches</p>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-10">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-1">Progress</h1>
+            <p className="text-blue-200/60">Resolved vs unresolved issues across branches</p>
+          </div>
+          <button
+            onClick={downloadPdf}
+            disabled={loading || totals.total === 0}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Download Progress PDF
+          </button>
+        </div>
 
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
@@ -192,10 +289,13 @@ export default function ProgressPage() {
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <span className="text-white font-medium">{g.name}</span>
-                        <span className="text-xs text-blue-200/50">{n} issues · {r} resolved · {u} unresolved</span>
+                        <span className="text-xs text-blue-200/50">{n} issues · {r} resolved · {u} unresolved · <span className="text-emerald-300 font-semibold">{width}% resolved</span></span>
                       </div>
-                      <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden">
-                        <div className="h-full rounded-full bg-emerald-500/80 transition-all" style={{ width: `${width}%` }} />
+                      <div className="flex items-center gap-3">
+                        <div className="h-2.5 flex-1 rounded-full bg-white/10 overflow-hidden">
+                          <div className="h-full rounded-full bg-emerald-500/80 transition-all" style={{ width: `${width}%` }} />
+                        </div>
+                        <span className="text-xs font-semibold text-emerald-300 w-10 text-right">{width}%</span>
                       </div>
                     </button>
                   );
@@ -215,13 +315,14 @@ export default function ProgressPage() {
                 {groups.map((g) => {
                   const n = g.plans.reduce((s, pl) => s + pl.findings.length, 0);
                   const r = g.plans.reduce((s, pl) => s + pl.findings.filter((f) => f.resolved === true).length, 0);
+                  const p = n ? Math.round((r / n) * 100) : 0;
                   return (
                     <button
                       key={g.name}
                       onClick={() => setActiveBranch(g.name)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${activeBranch === g.name ? "bg-blue-600/30 border-blue-500/40 text-blue-200" : "bg-white/5 border-white/10 text-blue-200/60 hover:bg-white/10"}`}
                     >
-                      {g.name} · {r}/{n}
+                      {g.name} · {p}%
                     </button>
                   );
                 })}
