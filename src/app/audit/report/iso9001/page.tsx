@@ -10,7 +10,7 @@ import { jsPDF } from "jspdf";
 import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
 
-interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; timeline?: number; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; }
 interface Schedule { id: string; branch_id: string; branch_name?: string; branch_manager?: string | null; date_from: string; date_to: string; departments: string[]; }
 interface Plan { id: string; schedule_id: string; title: string; criteria: string; description: string | null; findings: Finding[]; overall_result: string; created_at: string; branch_name?: string; document_number?: string | null; date_of_plan?: string | null; prepared_by?: string | null; signature?: string | null; pdf_url?: string | null; pdf_public_id?: string | null; }
 
@@ -265,7 +265,11 @@ export default function Iso9001Report() {
   async function toggleResolved(planId: string, idx: number) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan) return;
-    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, resolved: !(f.resolved === true) } : f));
+    const updated = plan.findings.map((f, i) => {
+      if (i !== idx) return f;
+      const resolved = !(f.resolved === true);
+      return resolved ? { ...f, resolved, resolved_at: new Date().toISOString() } : { ...f, resolved, resolved_at: null };
+    });
     updateLocal(planId, updated);
     await persist(planId, updated);
   }

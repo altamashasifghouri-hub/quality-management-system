@@ -7,7 +7,7 @@ import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
 
-interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; timeline?: number; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; }
 interface AuditPlan {
   id: string;
   title: string;
@@ -157,7 +157,11 @@ export default function AuditFindings() {
   async function toggleResolved(planId: string, idx: number) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan) return;
-    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, resolved: !(f.resolved === true) } : f));
+    const updated = plan.findings.map((f, i) => {
+      if (i !== idx) return f;
+      const resolved = !(f.resolved === true);
+      return resolved ? { ...f, resolved, resolved_at: new Date().toISOString() } : { ...f, resolved, resolved_at: null };
+    });
     updateLocal(planId, updated);
     await persist(planId, updated);
   }
