@@ -229,10 +229,10 @@ export default function Iso9001Report() {
       if (!res.ok) return showErr(json?.error || "Generation failed. Try again.");
       const incoming: Finding[] = json.findings || [];
       const current: Finding[] = selectedPlan.findings || [];
-      const existingKey = new Set(current.map((f) => `${(f.department || "").toLowerCase()}|${(f.clause || "").toLowerCase()}|${f.detail.trim().toLowerCase()}`));
+      const existingKey = new Set(current.map((f) => (f.detail || "").trim().toLowerCase()));
       const merged: Finding[] = [...current];
       incoming.forEach((f) => {
-        const key = `${(f.department || "").toLowerCase()}|${(f.clause || "").toLowerCase()}|${f.detail.trim().toLowerCase()}`;
+        const key = (f.detail || "").trim().toLowerCase();
         if (!existingKey.has(key)) {
           merged.push({
             department: f.department || "General",
@@ -633,6 +633,12 @@ y = ey + evThumbMaxH + 8;
                 <div className="bg-blue-500/10 border border-blue-500/30 text-blue-200 text-sm rounded-lg px-4 py-3">
                   Saved {lastGenerate.count} finding{lastGenerate.count !== 1 ? "s" : ""} to the audit record. Review them in the ISO 9001 Findings section below or in Findings and Evidences.
                 </div>
+              )}
+
+              {selectedPlan && selectedPlan.findings.length > 0 && (
+                <button onClick={() => generateReportPdf(selectedPlan)} disabled={pdfSaving} className="w-full px-5 py-3 rounded-xl bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-sm font-semibold transition-colors">
+                  {pdfSaving ? "Creating report PDF..." : `Create & Save ISO 9001 Report PDF (${selectedPlan.findings.length} finding${selectedPlan.findings.length !== 1 ? "s" : ""})`}
+                </button>
               )}
             </div>
 
