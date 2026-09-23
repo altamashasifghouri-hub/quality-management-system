@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { loadPdfImage } from "@/lib/pdf-image";
 
 interface Finding {
   department?: string;
@@ -33,6 +34,7 @@ interface Issue {
   planTitle: string;
   branchName: string;
   auditDate: string | null;
+  source: string;
   finding: Finding;
 }
 
@@ -42,6 +44,8 @@ const TYPE_COLOR: Record<string, string> = {
   Medium: "bg-amber-500/20 border-amber-500/40 text-amber-300",
   Low: "bg-emerald-500/20 border-emerald-500/40 text-emerald-300",
 };
+
+const SIG_DEFAULT = "/signature.png";
 
 function fmtDate(d?: string | null): string {
   if (!d) return "—";
@@ -66,6 +70,7 @@ export default function ProgressPage() {
   const [groups, setGroups] = useState<{ name: string; plans: Plan[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeBranch, setActiveBranch] = useState<string | null>(null);
+  const [preparedBy, setPreparedBy] = useState("Administrator");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -114,6 +119,12 @@ export default function ProgressPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.user_metadata?.full_name) setPreparedBy(data.user.user_metadata.full_name);
+    });
+  }, [supabase]);
+
   const selected = activeBranch ? groups.filter((g) => g.name === activeBranch) : groups;
   function collectIssues(gs: { name: string; plans: Plan[] }[]): Issue[] {
     const list = gs.flatMap((g) =>
@@ -123,6 +134,7 @@ export default function ProgressPage() {
           planTitle: pl.title,
           branchName: g.name,
           auditDate: pl.date_of_plan || pl.created_at,
+          source: pl.source,
           finding: f,
         }))
       )
@@ -147,29 +159,46 @@ export default function ProgressPage() {
   );
   const unresolved = totals.total - totals.resolved;
   const pct = totals.total ? Math.round((totals.resolved / totals.total) * 100) : 0;
+  const isoCount = groups.reduce((s, g) => s + g.plans.reduce((s2, pl) => s2 + (pl.source === "iso" ? pl.findings.length : 0), 0), 0);
+  const internalCount = totals.total - isoCount;
 
-  function downloadPdf() {
+  async function downloadPdf() {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 18;
-    doc.setFontSize(16);
+    const LOGO = "/logo.jpg";
+
+    try {
+      const logoUrl = await loadPdfImage(LOGO);
+      const logoW = 48;
+      const logoH = 34;
+      doc.addImage(logoUrl, "JPEG", (pageWidth - logoW) / 2, margin - 16, logoW, logoH);
+    } catch { /* logo unavailable */ }
+
+    const now = new Date();
+    const docNo = `QMS/PR/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    doc.setFontSize(17);
     doc.setTextColor(15, 23, 42);
-    doc.text("Issues Progress Report", pageWidth / 2, margin, { align: "center" });
+    doc.text("ISSUES PROGRESS REPORT", pageWidth / 2, margin + 28, { align: "center" });
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Generated: ${new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`, pageWidth / 2, margin + 6, { align: "center" });
+    doc.text(`Document No: ${docNo}`, pageWidth / 2, margin + 34, { align: "center" });
+    doc.text(`Generated: ${now.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`, pageWidth / 2, margin + 40, { align: "center" });
 
     autoTable(doc, {
-      startY: margin + 12,
+      startY: margin + 46,
       theme: "grid",
       head: [["Metric", "Value"]],
       body: [
         ["Total issues", String(totals.total)],
+        ["ISO 9001 issues", String(isoCount)],
+        ["Internal audit issues", String(internalCount)],
         ["Resolved", String(totals.resolved)],
         ["Unresolved", String(unresolved)],
         ["Resolved %", `${pct}%`],
       ],
       styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: [29, 78, 216], textColor: 255, fontStyle: "bold" },
       columnStyles: { 0: { fontStyle: "bold", cellWidth: 60 } },
     });
     let y = (doc as any).lastAutoTable.finalY + 10;
@@ -189,6 +218,7 @@ export default function ProgressPage() {
         return [g.name, String(n), String(r), String(n - r), `${p}%`];
       }),
       styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: [29, 78, 216], textColor: 255, fontStyle: "bold" },
     });
     y = (doc as any).lastAutoTable.finalY + 10;
 
@@ -200,10 +230,11 @@ export default function ProgressPage() {
     autoTable(doc, {
       startY: y,
       theme: "grid",
-      head: [["#", "Issue", "Branch", "Department", "Type", "Audit date", "Resolved date & time", "Status"]],
+      head: [["#", "Issue", "Audit", "Branch", "Department", "Type", "Audit date", "Resolved date & time", "Status"]],
       body: allIssues.map((it, i) => [
         String(i + 1),
         it.finding.detail,
+        it.source === "iso" ? "ISO 9001" : "Internal",
         it.branchName,
         it.finding.department || "—",
         it.finding.type || "Medium",
@@ -212,8 +243,23 @@ export default function ProgressPage() {
         it.finding.resolved === true ? "Resolved" : "Unresolved",
       ]),
       styles: { fontSize: 8, cellPadding: 2.5 },
-      columnStyles: { 1: { cellWidth: 70 } },
+      headStyles: { fillColor: [29, 78, 216], textColor: 255, fontStyle: "bold" },
+      columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 62 }, 2: { cellWidth: 17 }, 3: { cellWidth: 18 }, 4: { cellWidth: 20 }, 5: { cellWidth: 17 }, 6: { cellWidth: 18 }, 7: { cellWidth: 26 }, 8: { cellWidth: 16 } },
     });
+
+    let y2 = (doc as any).lastAutoTable.finalY + 14;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    if (y2 > pageHeight - 40) { doc.addPage(); y2 = 18; }
+    doc.setFontSize(10);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`Prepared by: ${preparedBy}`, 18, y2);
+    doc.text(`Date: ${new Date().toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}`, pageWidth - 18, y2, { align: "right" });
+    y2 += 14;
+    doc.text("Signature:", 18, y2);
+    try {
+      const dataUrl = await loadPdfImage(SIG_DEFAULT);
+      doc.addImage(dataUrl, "JPEG", 40, y2 - 8, 45, 22);
+    } catch { /* signature image unavailable */ }
 
     doc.save("QMS_Issues_Progress_Report.pdf");
   }
@@ -252,10 +298,18 @@ export default function ProgressPage() {
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
         ) : (
           <div className="space-y-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="bg-gradient-to-br from-blue-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-blue-400/25 rounded-xl p-5">
                 <p className="text-xs text-blue-200/50 uppercase tracking-wide">Total issues</p>
                 <p className="text-3xl font-bold text-white mt-1">{totals.total}</p>
+              </div>
+              <div className="bg-gradient-to-br from-sky-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-sky-400/30 rounded-xl p-5">
+                <p className="text-xs text-sky-300/60 uppercase tracking-wide">ISO 9001 issues</p>
+                <p className="text-3xl font-bold text-sky-300 mt-1">{isoCount}</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-purple-400/30 rounded-xl p-5">
+                <p className="text-xs text-purple-300/60 uppercase tracking-wide">Internal audit issues</p>
+                <p className="text-3xl font-bold text-purple-300 mt-1">{internalCount}</p>
               </div>
               <div className="bg-gradient-to-br from-emerald-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-emerald-400/30 rounded-xl p-5">
                 <p className="text-xs text-emerald-300/60 uppercase tracking-wide">Resolved</p>
@@ -265,9 +319,9 @@ export default function ProgressPage() {
                 <p className="text-xs text-amber-300/60 uppercase tracking-wide">Unresolved</p>
                 <p className="text-3xl font-bold text-amber-300 mt-1">{unresolved}</p>
               </div>
-              <div className="bg-gradient-to-br from-purple-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-purple-400/30 rounded-xl p-5">
-                <p className="text-xs text-purple-300/60 uppercase tracking-wide">Resolved</p>
-                <p className="text-3xl font-bold text-purple-300 mt-1">{pct}%</p>
+              <div className="bg-gradient-to-br from-indigo-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-indigo-400/30 rounded-xl p-5">
+                <p className="text-xs text-indigo-300/60 uppercase tracking-wide">Resolved</p>
+                <p className="text-3xl font-bold text-indigo-300 mt-1">{pct}%</p>
               </div>
             </div>
 
@@ -342,6 +396,7 @@ export default function ProgressPage() {
                         <tr className="text-xs uppercase tracking-wide text-blue-200/50 border-b border-white/10">
                           <th className="px-6 py-3 font-medium">#</th>
                           <th className="px-6 py-3 font-medium">Issue</th>
+                          <th className="px-6 py-3 font-medium">Audit</th>
                           <th className="px-6 py-3 font-medium">Audit date</th>
                           <th className="px-6 py-3 font-medium">Resolve date &amp; time</th>
                           <th className="px-6 py-3 font-medium">Status</th>
@@ -361,6 +416,11 @@ export default function ProgressPage() {
                                   {f.department && <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">{f.department}</span>}
                                   {f.clause && <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Clause {f.clause}</span>}
                                 </div>
+                              </td>
+                              <td className="px-6 py-3 whitespace-nowrap">
+                                <span className={`px-2 py-0.5 text-[10px] rounded-full border ${it.source === "iso" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-purple-500/20 border-purple-500/40 text-purple-300"}`}>
+                                  {it.source === "iso" ? "ISO 9001" : "Internal"}
+                                </span>
                               </td>
                               <td className="px-6 py-3 text-white/80 whitespace-nowrap">{fmtDate(it.auditDate)}</td>
                               <td className="px-6 py-3 text-white/80 whitespace-nowrap">{f.resolved === true ? fmt12h(f.resolved_at) : "—"}</td>
