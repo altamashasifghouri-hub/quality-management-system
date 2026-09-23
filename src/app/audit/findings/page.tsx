@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
+import { driveErrorMessage } from "@/lib/drive-error";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; timeline?: number; }
 interface AuditPlan {
@@ -218,8 +219,7 @@ export default function AuditFindings() {
     const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
-      if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
-      return showErr(errJson?.error?.message || "Picture upload failed.");
+      return showErr(driveErrorMessage(errJson, "Picture upload failed."));
     }
     const json = await res.json();
     if (!json.url) return showErr("Picture upload failed.");

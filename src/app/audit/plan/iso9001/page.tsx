@@ -7,6 +7,7 @@ import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { loadPdfImage } from "@/lib/pdf-image";
+import { driveErrorMessage } from "@/lib/drive-error";
 
 interface AuditSchedule {
   id: string; branch_id: string; date_from: string; date_to: string;
@@ -386,8 +387,7 @@ export default function AuditPlanPage() {
       const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
-        return showErr(typeof errJson?.error === "string" ? errJson.error : "PDF upload failed.");
+        return showErr(driveErrorMessage(errJson, "PDF upload failed."));
       }
       const json = await res.json();
       if (!json.url) return showErr("PDF upload failed.");

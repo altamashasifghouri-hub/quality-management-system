@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
+import { driveErrorMessage } from "@/lib/drive-error";
 import { jsPDF } from "jspdf";
 import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
@@ -286,8 +287,7 @@ export default function Iso9001Report() {
     const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
-      if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
-      return showErr(errJson?.error?.message || "Picture upload failed.");
+      return showErr(driveErrorMessage(errJson, "Picture upload failed."));
     }
     const json = await res.json();
     if (!json.url) return showErr("Picture upload failed.");
@@ -508,8 +508,7 @@ y = ey + evThumbMaxH + 8;
       const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
-        return showErr(typeof errJson?.error === "string" ? errJson.error : "PDF upload failed.");
+        return showErr(driveErrorMessage(errJson, "PDF upload failed."));
       }
       const json = await res.json();
       if (!json.url) return showErr("PDF upload failed.");

@@ -9,6 +9,7 @@ import autoTable from "jspdf-autotable";
 import JSZip from "jszip";
 import { loadPdfImage } from "@/lib/pdf-image";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
+import { driveErrorMessage } from "@/lib/drive-error";
 
 interface CapaFinding {
   department: string;
@@ -271,8 +272,8 @@ export default function CapaPage() {
       const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        if (errJson?.error === "not_connected") { setSavingKey(null); return showErr("Connect Google Drive first from the Storage page."); }
-        showErr(errJson?.error?.message || `${file.name} upload failed.`);
+        if (errJson?.error === "not_connected") { setSavingKey(null); return showErr(driveErrorMessage(errJson)); }
+        showErr(driveErrorMessage(errJson, `${file.name} upload failed.`));
         continue;
       }
       const json = await res.json();
@@ -460,8 +461,7 @@ export default function CapaPage() {
       const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
-        return showErr(errJson?.error?.message || "CAPA PDF upload failed.");
+        return showErr(driveErrorMessage(errJson, "CAPA PDF upload failed."));
       }
       const json = await res.json();
       if (!json.url) return showErr("CAPA PDF upload failed.");
@@ -517,8 +517,7 @@ export default function CapaPage() {
       const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        if (errJson?.error === "not_connected") return showErr("Connect Google Drive first from the Storage page.");
-        return showErr(errJson?.error?.message || "CAPA compilation upload failed.");
+        return showErr(driveErrorMessage(errJson, "CAPA compilation upload failed."));
       }
       const json = await res.json();
       if (!json.url) return showErr("CAPA compilation upload failed.");

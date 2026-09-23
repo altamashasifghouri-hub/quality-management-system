@@ -7,6 +7,7 @@ import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { loadPdfImage } from "@/lib/pdf-image";
+import { driveErrorMessage } from "@/lib/drive-error";
 
 interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; departments: Department[]; }
@@ -501,11 +502,7 @@ export default function InternalAuditPlan() {
           }
         } else {
           const errJson = await res.json().catch(() => ({}));
-          if (errJson?.error === "not_connected") {
-            showErr("Connect Google Drive first from the Storage page.");
-          } else {
-            showErr(typeof errJson?.error === "string" ? errJson.error : "PDF generated but upload failed.");
-          }
+          showErr(driveErrorMessage(errJson, "PDF generated but upload failed."));
         }
       } catch {
         showErr("PDF generated but upload failed.");
