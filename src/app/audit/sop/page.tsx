@@ -27,6 +27,9 @@ export default function InternalSops() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ department: string; sop_number: string; title: string; content: string }>({ department: "", sop_number: "", title: "", content: "" });
   const [sopNumber, setSopNumber] = useState("");
   const [department, setDepartment] = useState("");
   const [title, setTitle] = useState("");
@@ -150,6 +153,34 @@ export default function InternalSops() {
     fetchData();
   }
 
+  function toggleExpand(id: string) { setExpandedId((cur) => (cur === id ? null : id)); }
+
+  function startEdit(s: SopDoc) {
+    setEditId((cur) => (cur === s.id ? null : s.id));
+    setEditForm({ department: s.department, sop_number: s.sop_number, title: s.title || "", content: s.content });
+    setExpandedId(s.id);
+  }
+
+  async function saveEdit() {
+    if (!editId) return;
+    if (!editForm.sop_number.trim()) return showErr("Enter the SOP number.");
+    if (!editForm.department.trim()) return showErr("Enter the department.");
+    setSaving(true);
+    setError("");
+    const { error } = await supabase.from("sop_documents").update({
+      department: editForm.department.trim(),
+      sop_number: editForm.sop_number.trim(),
+      title: editForm.title.trim() || null,
+      content: editForm.content.trim(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", editId);
+    setSaving(false);
+    if (error) return showErr(error.message);
+    setEditId(null);
+    showMsg("SOP updated.");
+    fetchData();
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("Delete this SOP? It will no longer be used to check audit findings.")) return;
     const { error: err } = await supabase.from("sop_documents").delete().eq("id", id);
@@ -269,26 +300,97 @@ export default function InternalSops() {
           <p className="text-blue-200/40 text-center py-16">No SOPs yet. Add one to start checking audit notes against your procedures.</p>
         ) : (
           <div className="space-y-3">
-            {sops.map((s) => (
-              <div key={s.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="px-2.5 py-0.5 text-xs rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300">{s.sop_number}</span>
-                      <span className="px-2.5 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">{s.department}</span>
-                      {s.title && <span className="text-white font-medium">{s.title}</span>}
+            {sops.map((s) => {
+              const open = expandedId === s.id;
+              const editing = editId === s.id;
+              return (
+                <div key={s.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                  <button onClick={() => toggleExpand(s.id)} className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-white/5 transition-colors">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 text-xs rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300">{s.sop_number}</span>
+                        <span className="px-2.5 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">{s.department}</span>
+                        {s.title && <span className="text-white font-medium truncate">{s.title}</span>}
+                      </div>
+                      <p className="text-xs text-blue-200/40 mt-2">
+                        {s.file_name || "Pasted text"} · {s.content.length.toLocaleString()} characters · added {new Date(s.created_at).toLocaleDateString()}
+                        {s.file_url && (
+                          <a href={s.file_url} target="_blank" rel="noopener noreferrer" className="ml-2 text-teal-300 underline" onClick={(e) => e.stopPropagation()}>· in Google Drive</a>
+                        )}
+                      </p>
                     </div>
-                    <p className="text-xs text-blue-200/40 mt-2">
-                      {s.file_name || "Pasted text"} · {s.content.length.toLocaleString()} characters · added {new Date(s.created_at).toLocaleDateString()}
-                      {s.file_url && (
-                        <a href={s.file_url} target="_blank" rel="noopener noreferrer" className="ml-2 text-teal-300 underline">· in Google Drive</a>
+                    <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => startEdit(s)} className="px-3 py-1.5 text-xs rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white">Edit</button>
+                      <button onClick={() => handleDelete(s.id)} className="px-3 py-1.5 text-xs rounded-lg bg-red-600/80 hover:bg-red-600 text-white">Delete</button>
+                      <svg className={`w-5 h-5 text-blue-200/60 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+
+                  {open && (
+                    <div className="px-5 pb-5">
+                      {editing ? (
+                        <div className="space-y-3 pt-4 border-t border-white/10">
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs text-blue-200/60 mb-1">Department</label>
+                              <input
+                                value={editForm.department}
+                                onChange={(e) => setEditForm((f) => ({ ...f, department: e.target.value }))}
+                                list="sop-depts"
+                                placeholder="e.g. Warehouse & Distribution"
+                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-blue-200/60 mb-1">SOP number</label>
+                              <input
+                                value={editForm.sop_number}
+                                onChange={(e) => setEditForm((f) => ({ ...f, sop_number: e.target.value }))}
+                                placeholder="e.g. SOP-HR-003"
+                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-blue-200/60 mb-1">Title</label>
+                            <input
+                              value={editForm.title}
+                              onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+                              placeholder="e.g. Onboarding and Offboarding Procedure"
+                              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-blue-200/60 mb-1">Full text</label>
+                            <textarea
+                              value={editForm.content}
+                              onChange={(e) => setEditForm((f) => ({ ...f, content: e.target.value }))}
+                              rows={10}
+                              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={saveEdit} disabled={saving} className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                              {saving ? "Saving..." : "Save changes"}
+                            </button>
+                            <button onClick={() => setEditId(null)} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="pt-4 border-t border-white/10">
+                          <p className="text-xs text-blue-200/60 mb-2">SOP content</p>
+                          <div className="max-h-72 overflow-y-auto bg-black/20 border border-white/10 rounded-xl p-4 text-sm text-white/90 whitespace-pre-wrap leading-relaxed">
+                            {s.content}
+                          </div>
+                        </div>
                       )}
-                    </p>
-                  </div>
-                  <button onClick={() => handleDelete(s.id)} className="px-3 py-1.5 text-xs rounded-lg bg-red-600/80 hover:bg-red-600 text-white">Delete</button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
