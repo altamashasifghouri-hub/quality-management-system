@@ -260,17 +260,25 @@ export default function AuditFindings() {
     setMessage("");
     try {
       const depts = Array.from(new Set(plan.findings.map((f) => f.department).filter(Boolean)));
-      const res = await fetch("/api/ai/findings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          refcheck: true,
-          planId: plan.id,
-          departments: depts.length ? depts : ["General"],
-          clauses: plan.source === "iso" ? ISO_CLAUSE_ITEMS : [],
-          existing: plan.findings,
-        }),
-      });
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 90000);
+      let res: Response;
+      try {
+        res = await fetch("/api/ai/findings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            refcheck: true,
+            planId: plan.id,
+            departments: depts.length ? depts : ["General"],
+            clauses: plan.source === "iso" ? ISO_CLAUSE_ITEMS : [],
+            existing: plan.findings,
+          }),
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       const json = await res.json().catch(() => ({}));
       if (!res.ok) return showErr(json?.error || "Re-check failed. Try again.");
       const updated: Finding[] = json.findings || [];

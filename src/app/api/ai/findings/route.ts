@@ -374,13 +374,15 @@ export async function POST(req: Request) {
 
   let lastError = "";
   for (let m = 0; m < MODELS.length; m++) {
+    if (refcheck && m > 0) break;
     const model = MODELS[m];
-    const maxAttempts = m === 0 ? 3 : 1;
+    const maxAttempts = refcheck ? 1 : m === 0 ? 3 : 1;
+    const ttl = refcheck ? 45000 : 60000;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 60000);
+        const timer = setTimeout(() => controller.abort(), ttl);
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
           {
