@@ -77,7 +77,7 @@ export default function InternalSops() {
       fd.append("file", file);
       const res = await fetch("/api/policy-extract", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) { showErr(json?.error || "Could not read the file."); return; }
+      if (!res.ok) { showErr(`${json?.error || "Could not read the file."}${json?.detail ? ` (${String(json.detail).slice(0, 160)})` : ""}`); return; }
       setContent(json.text || "");
       setChars(json.charCount || 0);
       setDriveUrl("");

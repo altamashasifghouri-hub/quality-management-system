@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseFromCookies } from "@/lib/google-oauth";
 
 const SEVERITIES = ["Critical", "High", "Medium", "Low"];
-const MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-lite-latest"];
+const MODELS = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-pro-preview"];
 
 function normalizeSeverity(v: string) {
   const s = (v || "").toLowerCase();

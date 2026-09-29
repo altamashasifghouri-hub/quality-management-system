@@ -216,7 +216,7 @@ export default function InternalRecords() {
       fd.append("file", file);
       const res = await fetch("/api/policy-extract", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) return showErr(json?.error || "Could not read the file.");
+      if (!res.ok) return showErr(`${json?.error || "Could not read the file."}${json?.detail ? ` (${String(json.detail).slice(0, 160)})` : ""}`);
       let driveUrl: string | null = null;
       try {
         const dfd = new FormData();
