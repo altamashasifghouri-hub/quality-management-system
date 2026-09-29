@@ -33,6 +33,7 @@ export default function InternalSops() {
   const [sopNumber, setSopNumber] = useState("");
   const [department, setDepartment] = useState("");
   const [title, setTitle] = useState("");
+  const [newDeptMode, setNewDeptMode] = useState(false);
   const [fileName, setFileName] = useState("");
   const [content, setContent] = useState("");
   const [chars, setChars] = useState(0);
@@ -191,6 +192,7 @@ export default function InternalSops() {
 
   const inputCls = "px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 [color-scheme:dark] w-full";
   const labelCls = "block text-sm text-blue-200/60 mb-1";
+  const selectCls = "px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 [color-scheme:dark] w-full";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
@@ -230,10 +232,21 @@ export default function InternalSops() {
               </div>
               <div>
                 <label className={labelCls}>Department *</label>
-                <input value={department} onChange={(e) => setDepartment(e.target.value)} list="sop-depts" placeholder="e.g. Housekeeping" className={inputCls} />
-                <datalist id="sop-depts">
-                  {knownDepts.map((d) => <option key={d} value={d} />)}
-                </datalist>
+                <select
+                  value={newDeptMode ? "__new__" : department}
+                  onChange={(e) => {
+                    if (e.target.value === "__new__") { setNewDeptMode(true); setDepartment(""); }
+                    else { setNewDeptMode(false); setDepartment(e.target.value); }
+                  }}
+                  className={`${selectCls} ${!department && !newDeptMode ? "text-white/30" : ""}`}
+                >
+                  <option value="" disabled>Select a department</option>
+                  {knownDepts.map((d) => <option key={d} value={d}>{d}</option>)}
+                  <option value="__new__">Other (type a new department)…</option>
+                </select>
+                {newDeptMode && (
+                  <input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="Type department name" className={`${inputCls} mt-2`} />
+                )}
               </div>
               <div>
                 <label className={labelCls}>Title (optional)</label>
@@ -335,13 +348,14 @@ export default function InternalSops() {
                           <div className="grid sm:grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs text-blue-200/60 mb-1">Department</label>
-                              <input
+                              <select
                                 value={editForm.department}
                                 onChange={(e) => setEditForm((f) => ({ ...f, department: e.target.value }))}
-                                list="sop-depts"
-                                placeholder="e.g. Warehouse & Distribution"
-                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                              />
+                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-teal-500 [color-scheme:dark]"
+                              >
+                                {![...knownDepts, editForm.department].includes(editForm.department) && <option value={editForm.department}>{editForm.department}</option>}
+                                {knownDepts.map((d) => <option key={d} value={d}>{d}</option>)}
+                              </select>
                             </div>
                             <div>
                               <label className="block text-xs text-blue-200/60 mb-1">SOP number</label>
