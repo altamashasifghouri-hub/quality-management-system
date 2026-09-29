@@ -26,6 +26,37 @@ const SEVERITIES = ["Critical", "High", "Medium", "Low"] as const;
 const TIMELINE_DAYS: Record<string, number> = { Critical: 2, High: 4, Medium: 7, Low: 10 };
 const TIMELINE_OPTIONS = [2, 4, 7, 10];
 
+const ISO_CLAUSE_ITEMS = [
+  "4.1 Understanding the organization and its context",
+  "4.2 Interested parties and their requirements",
+  "4.3 Scope of the QMS",
+  "4.4 QMS and its processes",
+  "5.1 Leadership and commitment",
+  "5.2 Quality policy",
+  "5.3 Organizational roles, responsibilities and authorities",
+  "6.1 Actions to address risks and opportunities",
+  "6.2 Quality objectives and planning to achieve them",
+  "6.3 Planning of changes",
+  "7.1 Resources (people, infrastructure, environment)",
+  "7.2 Competence",
+  "7.3 Awareness",
+  "7.4 Communication",
+  "7.5 Documented information",
+  "8.1 Operational planning and control",
+  "8.2 Requirements for products and services",
+  "8.3 Design and development",
+  "8.4 Control of externally provided processes",
+  "8.5 Production and service provision",
+  "8.6 Release of products and services",
+  "8.7 Control of nonconforming outputs",
+  "9.1 Monitoring, measurement, analysis and evaluation",
+  "9.2 Internal audit",
+  "9.3 Management review",
+  "10.1 General",
+  "10.2 Nonconformity and corrective action",
+  "10.3 Continual improvement",
+];
+
 function severities(findings: Finding[]) {
   const s: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
   findings.forEach((f) => { if (s[f.type] !== undefined) s[f.type] += 1; });
@@ -100,6 +131,7 @@ export default function AuditFindings() {
   const [addDetail, setAddDetail] = useState("");
   const [deptOptions, setDeptOptions] = useState<Record<string, string[]>>({});
   const [allDepts, setAllDepts] = useState<string[]>([]);
+  const [recheckingId, setRecheckingId] = useState<string | null>(null);
 
   function deptOptionsFor(planId: string) {
     return Array.from(new Set([...(deptOptions[planId] || []), ...allDepts].filter(Boolean)));
@@ -219,6 +251,37 @@ export default function AuditFindings() {
     await persist(planId, updated);
     await Promise.all(evs.map((u) => deleteDriveFileByUrl(u)));
     showMsg("Finding deleted.");
+  }
+
+  async function recheckClauses(plan: AuditPlan) {
+    if (!plan.findings.length) return showErr("No findings to re-check.");
+    setRecheckingId(plan.id);
+    setError("");
+    setMessage("");
+    try {
+      const depts = Array.from(new Set(plan.findings.map((f) => f.department).filter(Boolean)));
+      const res = await fetch("/api/ai/findings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          refcheck: true,
+          planId: plan.id,
+          departments: depts.length ? depts : ["General"],
+          clauses: plan.source === "iso" ? ISO_CLAUSE_ITEMS : [],
+          existing: plan.findings,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return showErr(json?.error || "Re-check failed. Try again.");
+      const updated: Finding[] = json.findings || [];
+      updateLocal(plan.id, updated);
+      await persist(plan.id, updated);
+      showMsg(`Re-checked — added clause references where found (${updated.length} finding${updated.length !== 1 ? "s" : ""}).`);
+    } catch (e: any) {
+      showErr(e?.message || "Re-check failed. Please try again.");
+    } finally {
+      setRecheckingId(null);
+    }
   }
 
   async function addEvidence(planId: string, idx: number, file: File | null) {
@@ -402,6 +465,15 @@ export default function AuditFindings() {
                                   <span key={sev} className={`px-3 py-1 text-xs rounded-full border ${sevColor[sev]}`}>{sev}: {s[sev]}</span>
                                 ))}
                                 <span className={`px-3 py-1 text-xs rounded-full border ${st.cls}`}>{st.label} · {st.pct === null ? "—" : `${st.pct}%`}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => recheckClauses(plan)}
+                                  disabled={recheckingId === plan.id || plan.findings.length === 0}
+                                  className="px-3 py-1 text-xs rounded-lg bg-teal-600/30 border border-teal-500/40 text-teal-200 hover:bg-teal-600/50 transition-colors disabled:opacity-40"
+                                  title="Re-run the clause matcher against the HR policy and SOPs to fill in Policy/Clause references"
+                                >
+                                  {recheckingId === plan.id ? "Re-checking…" : "Re-check policy & SOP clauses"}
+                                </button>
                               </div>
 
                               {plan.findings.length === 0 ? (

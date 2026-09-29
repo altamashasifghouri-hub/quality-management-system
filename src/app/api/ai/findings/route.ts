@@ -220,6 +220,22 @@ function matchSopSection(note: string, sopIndex: { sop_number: string; clauses: 
   return { sop: bestSop, sopClause: bestClause };
 }
 
+function enrichFrom(incoming: any): any {
+  return {
+    ...(incoming?.policy ? { policy: String(incoming.policy) } : {}),
+    ...(incoming?.policyClause ? { policyClause: String(incoming.policyClause) } : {}),
+    ...(incoming?.sop ? { sop: String(incoming.sop) } : {}),
+    ...(incoming?.sopClause ? { sopClause: String(incoming.sopClause) } : {}),
+    ...(incoming?.clause ? { clause: String(incoming.clause) } : {}),
+    ...(incoming?.department && String(incoming.department) !== "General" ? { department: String(incoming.department) } : {}),
+  };
+}
+
+function mergeResults(results: any[], existing: any[], refcheck: boolean): any[] {
+  if (!refcheck) return results;
+  return existing.map((f: any, i: number) => ({ ...(f || {}), ...(results[i] ? enrichFrom(results[i]) : {}) }));
+}
+
 export async function POST(req: Request) {
   const supabase = await supabaseFromCookies();
   const { data: { user } } = await supabase.auth.getUser();
@@ -231,6 +247,9 @@ export async function POST(req: Request) {
   let branchName = "";
   let planTitle = "";
   let policyText = "";
+  let refcheck = false;
+  let planId = "";
+  let existing: any[] = [];
   try {
     const body = await req.json();
     notes = String(body.notes || "").trim();
@@ -239,10 +258,26 @@ export async function POST(req: Request) {
     branchName = String(body.branchName || "");
     planTitle = String(body.planTitle || "");
     policyText = String(body.policyText || "").trim().slice(0, 150000);
+    refcheck = Boolean(body.refcheck);
+    planId = String(body.planId || "");
+    existing = Array.isArray(body.existing) ? body.existing : [];
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
-  if (!notes) return NextResponse.json({ error: "Notepad is empty." }, { status: 400 });
+
+  if (refcheck) {
+    if (existing.length === 0) return NextResponse.json({ error: "No findings to re-check." }, { status: 400 });
+    notes = existing.map((f: any, i: number) => `${i + 1}. ${String(f.detail || "").trim()}`).filter(Boolean).join("\n");
+    if (!notes) return NextResponse.json({ error: "Findings have no detail text." }, { status: 400 });
+    if (planId && !policyText) {
+      try {
+        const { data: sess } = await supabase.from("audit_sessions").select("policy_text").eq("plan_id", planId).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+        if (sess?.policy_text) policyText = String(sess.policy_text).slice(0, 150000);
+      } catch { /* policy unavailable */ }
+    }
+  } else if (!notes) {
+    return NextResponse.json({ error: "Notepad is empty." }, { status: 400 });
+  }
   if (departments.length === 0) departments = ["General"];
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -333,7 +368,8 @@ export async function POST(req: Request) {
   ].join("\n");
 
   if (!apiKey) {
-    return NextResponse.json({ findings: heuristicFindings(notes, departments, clauses, policySections, sopIndex), source: "heuristic" });
+    const base = heuristicFindings(notes, departments, clauses, policySections, sopIndex);
+    return NextResponse.json({ findings: mergeResults(base, existing, refcheck), source: "heuristic" });
   }
 
   let lastError = "";
@@ -366,7 +402,7 @@ export async function POST(req: Request) {
         const json = await res.json();
         const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "";
         const findings = parseFindings(text, clauses);
-        if (findings) return NextResponse.json({ findings, source: "generated" });
+        if (findings) return NextResponse.json({ findings: mergeResults(findings, existing, refcheck), source: "generated" });
         lastError = `${model}: could not parse model output`;
       } catch (e: any) {
         lastError = `${model}: ${e?.message || "generation failed"}`;
@@ -375,5 +411,5 @@ export async function POST(req: Request) {
   }
 
   const fallback = heuristicFindings(notes, departments, clauses, policySections, sopIndex);
-  return NextResponse.json({ findings: fallback, source: "heuristic", lastError }, { status: 200 });
+  return NextResponse.json({ findings: mergeResults(fallback, existing, refcheck), source: "heuristic", lastError }, { status: 200 });
 }
