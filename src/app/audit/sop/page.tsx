@@ -110,28 +110,49 @@ export default function InternalSops() {
   async function handleSave() {
     if (!sopNumber.trim()) return showErr("Enter the SOP number.");
     if (!department.trim()) return showErr("Enter the department this SOP belongs to.");
-    if (!content.trim()) return showErr("Provide the SOP content (upload a file or paste the text).");
+    if (!content.trim() && !(fileRef.current && String(fileRef.current.type || "").includes("pdf"))) return showErr("Provide the SOP content (upload a PDF file or paste the text).");
     setSaving(true);
     setError("");
+    const id = crypto.randomUUID();
+    let filePath: string | null = null;
+    let fileMime: string | null = null;
+    if (fileRef.current) {
+      const safe = (fileRef.current.name || "sop").replace(/[^A-Za-z0-9._-]/g, "_");
+      const path = `sop/${id}/${safe}`;
+      const { error: upErr } = await supabase.storage.from("documents").upload(path, fileRef.current, { contentType: fileRef.current.type || "application/octet-stream", upsert: true });
+      if (upErr) return showErr(`File upload to storage failed: ${upErr.message}`);
+      filePath = path;
+      fileMime = fileRef.current.type || "application/pdf";
+    }
     const { error: err } = await supabase.from("sop_documents").insert({
+      id,
       department: department.trim(),
       sop_number: sopNumber.trim(),
       title: title.trim() || null,
       file_name: fileName || null,
       content: content.trim(),
+      file_path: filePath,
+      file_mime: fileMime,
     });
     setSaving(false);
-    if (err) return showErr(err.message);
+    if (err) {
+      if (filePath) await supabase.storage.from("documents").remove([filePath]).catch(() => {});
+      return showErr(err.message);
+    }
     setShowForm(false);
     setSopNumber(""); setDepartment(""); setTitle(""); setFileName(""); setContent(""); setChars(0); setDriveUrl(""); fileRef.current = null;
-    showMsg("SOP added — the AI will now check audit notes against it by department.");
+    showMsg("SOP added — the AI will now read the SOP (PDF) and check audit notes against it by department.");
     fetchData();
   }
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this SOP? It will no longer be used to check audit findings.")) return;
+    const { data: row } = await supabase.from("sop_documents").select("file_path").eq("id", id).maybeSingle();
     const { error: err } = await supabase.from("sop_documents").delete().eq("id", id);
     if (err) return showErr(err.message);
+    if (row && (row as any).file_path) {
+      await supabase.storage.from("documents").remove([(row as any).file_path as string]).catch(() => {});
+    }
     showMsg("SOP deleted.");
     fetchData();
   }

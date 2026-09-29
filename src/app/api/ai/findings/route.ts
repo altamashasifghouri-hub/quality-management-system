@@ -86,6 +86,8 @@ export async function POST(req: Request) {
   let branchName = "";
   let planTitle = "";
   let policyText = "";
+  let policyFilePath = "";
+  let policyFileMime = "";
   try {
     const body = await req.json();
     notes = String(body.notes || "").trim();
@@ -94,6 +96,8 @@ export async function POST(req: Request) {
     branchName = String(body.branchName || "");
     planTitle = String(body.planTitle || "");
     policyText = String(body.policyText || "").trim().slice(0, 150000);
+    policyFilePath = String(body.policyFilePath || "").trim();
+    policyFileMime = String(body.policyFileMime || "").trim().toLowerCase();
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
@@ -108,25 +112,32 @@ export async function POST(req: Request) {
       ].join("\n")
     : "";
 
+  const POLICY_INSTR = [
+    `POLICY REFERENCE — if an observed issue amounts to a breach or non-compliance with any of the company's policies, identify the specific violated policy and section:`,
+    `- "policy": the exact title/name of the violated policy (e.g. "6. Attendance, Lateness & Absence Policy" or "10.2 Tip Policy"). Return the full policy title exactly as written in the document.`,
+    `- "policyClause": the specific numbered section/point within it (e.g. "6.1 Late Policy" or "10.2 A. Submission of Tips"). Return it exactly as written.`,
+    `- A finding may violate only one policy — pick the single most relevant one. If the issue does not clearly violate any policy, OMIT both "policy" and "policyClause" entirely.`,
+  ].join("\n");
+  const SOP_INSTR = [
+    `SOP REFERENCE — if an observed issue amounts to a failure to follow any departmental Standard Operating Procedure, identify the single most relevant SOP and set:`,
+    `- "sop": the exact SOP number as written (e.g. "SOP-004").`,
+    `- "sopClause": the specific numbered section / step / clause of that SOP that was violated (e.g. "4.2 Daily checklist sign-off"). Return it exactly as written in the SOP.`,
+    `- If a finding also breaches the company policy document, include "policy" and "policyClause" as well. Both may appear together if both apply.`,
+    `- If the issue does not clearly violate an SOP, OMIT "sop" and "sopClause" entirely.`,
+  ].join("\n");
+
   const policyBlock = policyText
-    ? [
-        ``,
-        `POLICY REFERENCE — the company's official policies are provided below. For EVERY finding, if the observed issue amounts to a breach or non-compliance with any of these policies, identify the specific violated policy and section:`,
-        `- "policy": the exact title/name of the violated policy (e.g. "6. Attendance, Lateness & Absence Policy" or "10.2 Tip Policy"). Return the full policy title exactly as written in the document.`,
-        `- "policyClause": the specific numbered section/point within it (e.g. "6.1 Late Policy" or "10.2 A. Submission of Tips"). Return it exactly as written.`,
-        `- A finding may violate only one policy — pick the single most relevant one. If the issue does not clearly violate any policy in the document, OMIT both "policy" and "policyClause" entirely.`,
-        ``,
-        `BEGIN COMPANY POLICY DOCUMENT:`,
-        policyText,
-        ``,
-        `END COMPANY POLICY DOCUMENT.`,
-      ].join("\n")
+    ? ["", POLICY_INSTR, "", `BEGIN COMPANY POLICY DOCUMENT:`, policyText, "", `END COMPANY POLICY DOCUMENT.`].join("\n")
     : "";
 
+  interface PdfPart { label: string; mimeType: string; data: string; }
+  const pdfParts: PdfPart[] = [];
   let sopBlock = "";
   const sopRows: { department: string; sop_number: string; title: string | null; content: string | null }[] = [];
+  let hasPolicyPdf = false;
+  let hasSopPdf = false;
   try {
-    const { data: sops } = await supabase.from("sop_documents").select("department, sop_number, title, content").order("sop_number", { ascending: true });
+    const { data: sops } = await supabase.from("sop_documents").select("department, sop_number, title, content, file_path, file_mime").order("sop_number", { ascending: true });
     if (Array.isArray(sops)) {
       const depLower = departments.map((d) => d.toLowerCase());
       const relevant = sops.filter((s) => depLower.includes(String(s.department || "").trim().toLowerCase()));
@@ -135,28 +146,72 @@ export async function POST(req: Request) {
       const MAX_TOTAL = 100000;
       let budget = 0;
       for (const s of relevant) {
-        if (sopRows.length >= MAX_SOPS || budget >= MAX_TOTAL) break;
+        if (sopRows.length + pdfParts.length >= MAX_SOPS || budget >= MAX_TOTAL) break;
+        const isPdf = String(s.file_mime || "").toLowerCase().includes("pdf") && String(s.file_path || "").trim();
+        if (isPdf) {
+          const path = String(s.file_path).trim();
+          try {
+            const { data: pub } = supabase.storage.from("documents").getPublicUrl(path);
+            const res = await fetch(pub.publicUrl, { method: "GET" });
+            if (res.ok) {
+              const buf = await res.arrayBuffer();
+              const bytes = new Uint8Array(buf);
+              let binary = "";
+              for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+              pdfParts.push({ label: `SOP ${String(s.sop_number || "")}${s.title ? ` — ${s.title}` : ""}`, mimeType: "application/pdf", data: btoa(binary) });
+              hasSopPdf = true;
+              continue;
+            }
+          } catch { /* pdf fetch failed — fall back to text below */ }
+        }
         const body = String(s.content || "").slice(0, MAX_PER_SOP);
         sopRows.push({ department: String(s.department || ""), sop_number: String(s.sop_number || ""), title: s.title || null, content: body });
         budget += body.length;
       }
     }
   } catch { /* sop lookup unavailable */ }
+
+  if (policyFilePath && policyFileMime.includes("pdf")) {
+    try {
+      const { data: pub } = supabase.storage.from("documents").getPublicUrl(policyFilePath);
+      const res = await fetch(pub.publicUrl, { method: "GET" });
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        pdfParts.push({ label: "company policy document", mimeType: "application/pdf", data: btoa(binary) });
+        hasPolicyPdf = true;
+      }
+    } catch { /* policy pdf fetch failed */ }
+  }
+  const hasPolicyRef = Boolean(policyText) || hasPolicyPdf;
+  const hasSopRef = sopRows.length > 0 || hasSopPdf;
+
   if (sopRows.length) {
     sopBlock = [
-      ``,
-      `SOP REFERENCE — the department Standard Operating Procedures (SOPs) relevant to this audit are provided below, each identified by its SOP number.`,
-      `For EVERY finding, if the observed issue amounts to a failure to follow any SOP below, identify the single most relevant SOP and set:`,
-      `- "sop": the exact SOP number as written (e.g. "SOP-004").`,
-      `- "sopClause": the specific numbered section / step / clause of that SOP that was violated (e.g. "4.2 Daily checklist sign-off"). Return it exactly as written in the SOP.`,
-      `- If a finding also breaches the company policy document above, include "policy" and "policyClause" as well. Both may appear together if both apply.`,
-      `- If the issue does not clearly violate an SOP, OMIT "sop" and "sopClause" entirely.`,
-      ``,
+      "",
+      SOP_INSTR,
+      "",
       ...sopRows.map((s) => `SOP ${s.sop_number}${s.title ? ` — ${s.title}` : ""} (${s.department}):\n${s.content}`),
-      ``,
+      "",
       `END SOP REFERENCE.`,
     ].join("\n");
   }
+
+  const shapeExample = `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."${hasPolicyRef ? `,"policy":"6. Attendance, Lateness & Absence Policy","policyClause":"6.2 Absence & Leave Intimation"` : ""}${hasSopRef ? `,"sop":"SOP-004","sopClause":"4.2 Daily checklist sign-off"` : ""}${clauses.length ? `,"clause":"4.1 Understanding the organization and its context"` : ""}}]`;
+
+  const tail = [
+    `Return ONLY a JSON array with no markdown, no prose, in this shape:`,
+    shapeExample,
+    ``,
+    `Hotel/Branch: ${branchName || "Not provided"}`,
+    `Audit: ${planTitle || "Internal Audit"}`,
+    `Audited departments: ${departments.join(", ")}`,
+    ``,
+    `Raw audit notes:`,
+    notes,
+  ];
 
   const promptText = [
     `You are an internal auditor. Convert the auditor's raw field notes below into a structured list of audit findings.`,
@@ -167,56 +222,72 @@ export async function POST(req: Request) {
     clauseBlock,
     policyBlock,
     sopBlock,
-    `Return ONLY a JSON array with no markdown, no prose, in this shape:`,
-    policyText
-      ? `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done.","policy":"6. Attendance, Lateness & Absence Policy","policyClause":"6.2 Absence & Leave Intimation","sop":"SOP-004","sopClause":"4.2 Daily checklist sign-off"}]`
-      : sopRows.length
-        ? `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done.","sop":"SOP-004","sopClause":"4.2 Daily checklist sign-off"}]`
-        : clauses.length
-          ? `[{"department":"Department Name","clause":"4.1 Understanding the organization and its context","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`
-          : `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`,
-    ``,
-    `Hotel/Branch: ${branchName || "Not provided"}`,
-    `Audit: ${planTitle || "Internal Audit"}`,
-    `Audited departments: ${departments.join(", ")}`,
-    ``,
-    `Raw audit notes:`,
-    notes,
+    ...tail,
+  ].join("\n");
+
+  const policyFilesBlock = hasPolicyPdf
+    ? ["", POLICY_INSTR, "", `The company policy document is attached below as a PDF. Read it directly and use the exact policy titles and section wording from it, including anything inside images or scanned pages.`].join("\n")
+    : "";
+  const sopFilesBlock = hasSopRef
+    ? ["", SOP_INSTR, "", ...(sopRows.length ? [`SOP texts provided below:`, ...sopRows.map((s) => `SOP ${s.sop_number}${s.title ? ` — ${s.title}` : ""} (${s.department}):\n${s.content}`)] : [`The departmental SOPs are attached below as PDF files. Read them directly and use the exact SOP numbers and clause wording from them, including anything inside images or scanned pages.`])].join("\n")
+    : "";
+
+  const promptTextFiles = [
+    `You are an internal auditor. Convert the auditor's raw field notes below into a structured list of audit findings.`,
+    `The official documents needed to evaluate the notes are attached to this prompt as actual PDF files (read them directly — do not rely on anything besides what is inside the PDFs).`,
+    `For each finding assign the department (MUST be one of these audited departments: ${departments.join(", ")}),`,
+    `a risk type of exactly one of: ${SEVERITIES.join(", ")} (use Critical for life/safety or major money loss, High for serious process failures, Medium for moderate gaps, Low for minor issues/observations),`,
+    `a clear factual detail description, and a practical recommendation for each.`,
+    `Only use the departments listed above. Do not invent departments.`,
+    clauseBlock,
+    policyFilesBlock,
+    sopFilesBlock,
+    ...tail,
   ].join("\n");
 
   if (!apiKey) {
     return NextResponse.json({ findings: heuristicFindings(notes, departments, clauses), source: "heuristic" });
   }
 
+  const attempts: { parts: any[] }[] = [];
+  if (pdfParts.length) {
+    attempts.push({
+      parts: [{ text: promptTextFiles }, ...pdfParts.map((p) => ({ inlineData: { mimeType: p.mimeType, data: p.data } }))],
+    });
+  }
+  attempts.push({ parts: [{ text: promptText }] });
+
   let lastError = "";
-  for (const model of MODELS) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 45000);
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: promptText }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
-          }),
-          signal: controller.signal,
+  for (const attempt of attempts) {
+    for (const model of MODELS) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60000);
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: attempt.parts }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+            }),
+            signal: controller.signal,
+          }
+        );
+        clearTimeout(timer);
+        if (!res.ok) {
+          lastError = `${model}: ${res.status} ${await res.text()}`;
+          continue;
         }
-      );
-      clearTimeout(timer);
-      if (!res.ok) {
-        lastError = `${res.status} ${await res.text()}`;
-        continue;
+        const json = await res.json();
+        const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "";
+        const findings = parseFindings(text, clauses);
+        if (findings) return NextResponse.json({ findings, source: "generated" });
+        lastError = `${model}: could not parse model output`;
+      } catch (e: any) {
+        lastError = `${model}: ${e?.message || "generation failed"}`;
       }
-      const json = await res.json();
-      const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "";
-      const findings = parseFindings(text, clauses);
-      if (findings) return NextResponse.json({ findings, source: "generated" });
-      lastError = "could not parse model output";
-    } catch (e: any) {
-      lastError = e?.message || "generation failed";
     }
   }
 

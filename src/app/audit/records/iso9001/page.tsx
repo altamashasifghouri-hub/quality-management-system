@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
-interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; sop?: string; sopClause?: string; }
 interface Schedule { id: string; branch_id: string; branch_name?: string; date_from: string; date_to: string; departments: string[]; }
 interface Plan { id: string; schedule_id: string; title: string; criteria: string; description: string | null; findings: Finding[]; }
 
@@ -167,8 +167,15 @@ export default function Iso9001Records() {
             recommendation: f.recommendation,
             evidence: [],
             resolved: false,
+            sop: f.sop,
+            sopClause: f.sopClause,
           });
           existingKey.add(key);
+        } else {
+          const idx = merged.findIndex((m) => `${(m.department || "").toLowerCase()}|${(m.clause || "").toLowerCase()}|${(m.detail || "").trim().toLowerCase()}` === key);
+          if (idx >= 0 && !merged[idx].sop && f.sop) {
+            merged[idx] = { ...merged[idx], sop: f.sop, sopClause: f.sopClause };
+          }
         }
       });
       const { error: updErr } = await supabase.from("audit_plans").update({
