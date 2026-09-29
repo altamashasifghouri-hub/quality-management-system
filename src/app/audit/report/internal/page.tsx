@@ -14,7 +14,7 @@ interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; branch_manager: string | null; locations: string[] | null; departments: Department[]; }
 interface AuditSchedule { id: string; branch_id: string; date_from: string; date_to: string; departments: string[]; }
 interface SettingsRow { id: number; hr_name: string; ceo_name: string; }
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; timeline?: number; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; timeline?: number; policy?: string; policyClause?: string; }
 
 interface PlanRow {
   id: string;
@@ -545,6 +545,18 @@ export default function InternalAuditReport() {
             if (y + 4.8 > maxY) { doc.addPage(); y = margin; }
             doc.text(ln, margin, y); y += 4.8;
           }
+          if (f.policy) {
+            doc.setFontSize(9.5);
+            doc.setTextColor(147, 51, 234);
+            doc.setFont("helvetica", "bold");
+            const pLine = `Policy Violated: ${f.policy}${f.policyClause ? ` — ${f.policyClause}` : ""}`;
+            for (const ln of doc.splitTextToSize(pLine, maxWidth)) {
+              if (y + 4.5 > maxY) { doc.addPage(); y = margin; }
+              doc.text(ln, margin, y); y += 4.5;
+            }
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+          }
           if (f.recommendation) {
             doc.setTextColor(51, 65, 85);
             for (const ln of doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth)) {
@@ -840,6 +852,7 @@ export default function InternalAuditReport() {
                         <tr className="bg-white/10 text-left text-xs text-blue-200/60 sticky top-0">
                           <th className="px-3 py-2 font-medium">Department</th>
                           <th className="px-3 py-2 font-medium">Severity</th>
+                          <th className="px-3 py-2 font-medium">Policy violated</th>
                           <th className="px-3 py-2 font-medium">Detail</th>
                           <th className="px-3 py-2 font-medium">Evidence</th>
                         </tr>
@@ -849,6 +862,7 @@ export default function InternalAuditReport() {
                           <tr key={i} className="border-t border-white/5 align-top">
                             <td className="px-3 py-2 text-white/80 whitespace-nowrap">{f.department}</td>
                             <td className="px-3 py-2 text-white/80 whitespace-nowrap">{f.type}</td>
+                            <td className="px-3 py-2 text-purple-300 max-w-[200px] break-words">{f.policy ? <>{f.policy}{f.policyClause ? <span className="text-purple-300/60"> — {f.policyClause}</span> : null}</> : <span className="text-blue-200/30">—</span>}</td>
                             <td className="px-3 py-2 text-white/60">{f.detail}</td>
                             <td className="px-3 py-2">
                               <div className="flex flex-wrap gap-1.5 max-w-[220px]">

@@ -25,7 +25,7 @@ function resolveClause(v: string, clauses: string[]): string {
   return "";
 }
 
-function parseFindings(text: string, clauses: string[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string }[] | null {
+function parseFindings(text: string, clauses: string[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string }[] | null {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = fence ? fence[1] : text;
   const start = raw.indexOf("[");
@@ -36,12 +36,16 @@ function parseFindings(text: string, clauses: string[] = []): { department: stri
     if (!Array.isArray(arr) || arr.length === 0) return null;
     return arr.map((f: any) => {
       const clause = resolveClause(String(f.clause || ""), clauses);
+      const policy = String(f.policy || f.policy_name || "").trim();
+      const policyClause = String(f.policyClause || f.policy_clause || f.policy_section || "").trim();
       return {
         department: String(f.department || "").trim() || "General",
         ...(clause ? { clause } : {}),
         type: normalizeSeverity(f.type || f.severity || f.risk || "Low"),
         detail: String(f.detail || f.finding || f.description || "").trim(),
         recommendation: String(f.recommendation || f.recommended_action || "").trim() || undefined,
+        ...(policy ? { policy: policy.slice(0, 200) } : {}),
+        ...(policyClause ? { policyClause: policyClause.slice(0, 200) } : {}),
       };
     }).filter((f) => f.detail.length > 3);
   } catch {
@@ -77,6 +81,7 @@ export async function POST(req: Request) {
   let clauses: string[] = [];
   let branchName = "";
   let planTitle = "";
+  let policyText = "";
   try {
     const body = await req.json();
     notes = String(body.notes || "").trim();
@@ -84,6 +89,7 @@ export async function POST(req: Request) {
     clauses = Array.isArray(body.clauses) ? body.clauses.map(String).filter(Boolean) : [];
     branchName = String(body.branchName || "");
     planTitle = String(body.planTitle || "");
+    policyText = String(body.policyText || "").trim().slice(0, 150000);
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
@@ -98,6 +104,21 @@ export async function POST(req: Request) {
       ].join("\n")
     : "";
 
+  const policyBlock = policyText
+    ? [
+        ``,
+        `POLICY REFERENCE — the company's official policies are provided below. For EVERY finding, if the observed issue amounts to a breach or non-compliance with any of these policies, identify the specific violated policy and section:`,
+        `- "policy": the exact title/name of the violated policy (e.g. "6. Attendance, Lateness & Absence Policy" or "10.2 Tip Policy"). Return the full policy title exactly as written in the document.`,
+        `- "policyClause": the specific numbered section/point within it (e.g. "6.1 Late Policy" or "10.2 A. Submission of Tips"). Return it exactly as written.`,
+        `- A finding may violate only one policy — pick the single most relevant one. If the issue does not clearly violate any policy in the document, OMIT both "policy" and "policyClause" entirely.`,
+        ``,
+        `BEGIN COMPANY POLICY DOCUMENT:`,
+        policyText,
+        ``,
+        `END COMPANY POLICY DOCUMENT.`,
+      ].join("\n")
+    : "";
+
   const promptText = [
     `You are an internal auditor. Convert the auditor's raw field notes below into a structured list of audit findings.`,
     `For each finding assign the department (MUST be one of these audited departments: ${departments.join(", ")}),`,
@@ -105,10 +126,13 @@ export async function POST(req: Request) {
     `a clear factual detail description, and a practical recommendation for each.`,
     `Only use the departments listed above. Do not invent departments.`,
     clauseBlock,
+    policyBlock,
     `Return ONLY a JSON array with no markdown, no prose, in this shape:`,
-    clauses.length
-      ? `[{"department":"Department Name","clause":"4.1 Understanding the organization and its context","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`
-      : `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`,
+    policyText
+      ? `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done.","policy":"6. Attendance, Lateness & Absence Policy","policyClause":"6.2 Absence & Leave Intimation"}]`
+      : clauses.length
+        ? `[{"department":"Department Name","clause":"4.1 Understanding the organization and its context","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`
+        : `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`,
     ``,
     `Hotel/Branch: ${branchName || "Not provided"}`,
     `Audit: ${planTitle || "Internal Audit"}`,

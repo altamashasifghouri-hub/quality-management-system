@@ -15,6 +15,7 @@
     "jspdf-autotable": "^5.0.8",
     "jszip": "^3.10.1",
     "next": "^15.5.25",
+    "pdf-parse": "^2.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.160.0"

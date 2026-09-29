@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; policy?: string; policyClause?: string; }
 interface Branch { id: string; name: string; }
 interface Schedule { id: string; branch_id: string; date_from: string; date_to: string; departments: string[]; }
 interface AuditPlan {
@@ -28,6 +28,8 @@ interface Session {
   plan_id: string;
   notepad: string;
   status: string;
+  policy_text: string;
+  policy_file: string;
 }
 
 export default function InternalRecords() {
@@ -49,6 +51,14 @@ export default function InternalRecords() {
   const [closing, setClosing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [lastGenerate, setLastGenerate] = useState<{ count: number; source: string } | null>(null);
+
+  const [policyText, setPolicyText] = useState("");
+  const [policyFileName, setPolicyFileName] = useState("");
+  const [policyChars, setPolicyChars] = useState(0);
+  const [policyExtracting, setPolicyExtracting] = useState(false);
+  const [policyDriveUrl, setPolicyDriveUrl] = useState("");
+  const [savingToDrive, setSavingToDrive] = useState(false);
+  const policyFileRef = useRef<File | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -75,8 +85,18 @@ export default function InternalRecords() {
       date_of_plan: p.date_of_plan, purpose: p.purpose, document_number: p.document_number,
     })));
     if (sessionData) {
-      setSession({ id: sessionData.id as string, plan_id: sessionData.plan_id as string, notepad: sessionData.notepad || "", status: sessionData.status });
+      setSession({
+        id: sessionData.id as string,
+        plan_id: sessionData.plan_id as string,
+        notepad: sessionData.notepad || "",
+        status: sessionData.status,
+        policy_text: sessionData.policy_text || "",
+        policy_file: sessionData.policy_file || "",
+      });
       setNotepad(sessionData.notepad || "");
+      setPolicyText(sessionData.policy_text || "");
+      setPolicyFileName(sessionData.policy_file || "");
+      setPolicyChars((sessionData.policy_text || "").length || 0);
     }
     setLoading(false);
   }, [supabase]);
@@ -119,12 +139,13 @@ export default function InternalRecords() {
         if (err2) return showErr(err2.message);
       } else {
         const { data, error: err2 } = await supabase
-          .from("audit_sessions").insert({ plan_id: selectedPlan.id, notepad: "", status: "active" }).select("id").single();
+          .from("audit_sessions").insert({ plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "" }).select("id").single();
         if (err2) return showErr(err2.message);
         sessId = data?.id as string;
       }
-      setSession({ id: sessId, plan_id: selectedPlan.id, notepad: "", status: "active" });
+      setSession({ id: sessId, plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "" });
       setNotepad("");
+      setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
       setSelectedPlanId("");
       showMsg("Audit started. Everything you write here is auto-saved — close it only when you are done.");
       setStarting(false);
@@ -166,12 +187,73 @@ export default function InternalRecords() {
     if (!confirm("Close this audit session? This ends the recording — you can start a new one anytime.")) return;
     setClosing(true);
     await persistNotepad(notepad);
+    if (session.policy_text !== policyText) {
+      await supabase.from("audit_sessions").update({ policy_text: policyText, policy_file: policyFileName, updated_at: new Date().toISOString() }).eq("id", session.id).then(({ error }) => { if (error) showErr(error.message); });
+    }
     const { error: err } = await supabase.from("audit_sessions").update({ status: "closed", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", session.id);
     setClosing(false);
     if (err) return showErr(err.message);
     setSession(null); setNotepad(""); setSelectedPlanId("");
+    setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
     showMsg("Audit closed.");
     fetchData();
+  }
+
+  async function handlePolicyFile(file: File | null) {
+    if (!session) return;
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) return showErr("Policy file must be 4MB or smaller.");
+    const ext = (file.name.toLowerCase().match(/\.[a-z0-9]+$/i) || [])[0] || "";
+    if (![".txt", ".md", ".csv", ".docx", ".pdf"].includes(ext)) return showErr("Supported formats: TXT, DOCX, PDF.");
+    policyFileRef.current = file;
+    setPolicyExtracting(true);
+    setError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/policy-extract", { method: "POST", body: fd });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return showErr(json?.error || "Could not read the file.");
+      setPolicyText(json.text || "");
+      setPolicyFileName(json.fileName || file.name);
+      setPolicyChars(json.charCount || 0);
+      setPolicyDriveUrl("");
+      const { error: err } = await supabase.from("audit_sessions").update({ policy_text: json.text || "", policy_file: json.fileName || file.name, updated_at: new Date().toISOString() }).eq("id", session.id);
+      if (err) showErr(err.message);
+      showMsg("Policy document loaded — findings will be checked against it.");
+    } catch (e: any) {
+      showErr(e?.message || "Could not read the file.");
+    } finally {
+      setPolicyExtracting(false);
+    }
+  }
+
+  async function handleClearPolicy() {
+    if (!session) return;
+    policyFileRef.current = null;
+    setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
+    await supabase.from("audit_sessions").update({ policy_text: "", policy_file: "", updated_at: new Date().toISOString() }).eq("id", session.id);
+    showMsg("Policy reference removed.");
+  }
+
+  async function handleSavePolicyToDrive() {
+    if (!session || !policyFileRef.current) return;
+    setSavingToDrive(true);
+    setError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", policyFileRef.current);
+      fd.append("folderKind", "policies");
+      const res = await fetch("/api/drive-upload", { method: "POST", body: fd });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return showErr(json?.error || "Upload to Google Drive failed.");
+      setPolicyDriveUrl(json.url || "");
+      showMsg("Policy document saved to Google Drive.");
+    } catch (e: any) {
+      showErr(e?.message || "Upload to Google Drive failed.");
+    } finally {
+      setSavingToDrive(false);
+    }
   }
 
   async function handleGenerate() {
@@ -189,6 +271,7 @@ export default function InternalRecords() {
           departments: sessionPlan.departments,
           branchName: sessionPlan.branch_name,
           planTitle: sessionPlan.title,
+          policyText,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -199,7 +282,24 @@ export default function InternalRecords() {
       const merged = [...current];
       incoming.forEach((f) => {
         const key = `${(f.department || "").toLowerCase()}|${(f.detail || "").trim().toLowerCase()}`;
-        if (!existingKey.has(key)) { merged.push({ department: f.department, type: f.type, detail: f.detail, recommendation: f.recommendation, evidence: [], resolved: false }); existingKey.add(key); }
+        if (!existingKey.has(key)) {
+          merged.push({
+            department: f.department,
+            type: f.type,
+            detail: f.detail,
+            recommendation: f.recommendation,
+            evidence: [],
+            resolved: false,
+            policy: f.policy,
+            policyClause: f.policyClause,
+          });
+          existingKey.add(key);
+        } else {
+          const idx = merged.findIndex((m) => `${(m.department || "").toLowerCase()}|${(m.detail || "").trim().toLowerCase()}` === key);
+          if (idx >= 0 && !merged[idx].policy && f.policy) {
+            merged[idx] = { ...merged[idx], policy: f.policy, policyClause: f.policyClause };
+          }
+        }
       });
       const { error: updErr } = await supabase.from("internal_audits").update({ findings: merged, updated_at: new Date().toISOString() }).eq("id", sessionPlan.id);
       if (updErr) return showErr(updErr.message);
@@ -275,6 +375,59 @@ export default function InternalRecords() {
                   {sessionPlan.departments.length === 0 && <span className="text-xs text-blue-200/40">No departments on this plan.</span>}
                 </div>
               </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-emerald-500/10 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-emerald-500/30 rounded-2xl p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Policy reference (optional)</h2>
+                  <p className="text-xs text-blue-200/40 mt-1">Upload your HR / company policy document (PDF, DOCX or TXT). Findings will be matched against it to name the violated policy and section.</p>
+                </div>
+                {policyFileName && (
+                  <button onClick={handleClearPolicy} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors">Remove</button>
+                )}
+              </div>
+
+              {policyFileName ? (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-emerald-300 font-medium truncate flex items-center gap-2">
+                        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                        {policyFileName}
+                      </p>
+                      <p className="text-xs text-emerald-300/60 mt-1">{policyChars.toLocaleString()} characters loaded · used for the next Generate Findings</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {!policyDriveUrl && (
+                        <button onClick={handleSavePolicyToDrive} disabled={savingToDrive} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors disabled:opacity-50">
+                          {savingToDrive ? "Saving..." : "Save a copy to Google Drive"}
+                        </button>
+                      )}
+                      <label className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium cursor-pointer transition-colors">
+                        Replace
+                        <input type="file" accept=".pdf,.docx,.txt,.md,.csv" className="hidden" onChange={(e) => handlePolicyFile(e.target.files?.[0] || null)} />
+                      </label>
+                    </div>
+                  </div>
+                  {policyDriveUrl && (
+                    <a href={policyDriveUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-300 underline mt-3 inline-block">✓ Saved to Google Drive — open file</a>
+                  )}
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center gap-2 cursor-pointer border border-dashed border-emerald-500/40 rounded-xl p-8 hover:bg-emerald-500/5 transition-colors">
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,.csv"
+                    className="hidden"
+                    disabled={policyExtracting}
+                    onChange={(e) => handlePolicyFile(e.target.files?.[0] || null)}
+                  />
+                  <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                  <span className="text-sm text-emerald-200/80">{policyExtracting ? "Reading document..." : "Click to upload the policy document"}</span>
+                  <span className="text-xs text-blue-200/40">PDF · DOCX · TXT — up to 4MB</span>
+                </label>
+              )}
             </div>
 
             <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">

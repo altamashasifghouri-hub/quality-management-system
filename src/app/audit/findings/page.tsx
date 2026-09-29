@@ -7,7 +7,7 @@ import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
 
-interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; policy?: string; policyClause?: string; }
 interface AuditPlan {
   id: string;
   title: string;
@@ -435,6 +435,9 @@ export default function AuditFindings() {
                                                 <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
                                               )}
                                               {f.clause && <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">Clause {f.clause}</span>}
+                                              {f.policy && (
+                                                <span title={`${f.policy}${f.policyClause ? " — " + f.policyClause : ""}`} className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Policy: {f.policy}{f.policyClause ? ` — ${f.policyClause}` : ""}</span>
+                                              )}
                                               <span className="text-[10px] uppercase tracking-wide text-blue-200/40">Issue #{String(i + 1).padStart(2, "0")}</span>
                                             </div>
                                             <DetailEditor detail={f.detail} resolved={resolved} onSave={(v) => updateDetail(plan.id, i, v)} />
