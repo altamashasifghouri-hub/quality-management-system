@@ -57,13 +57,65 @@ function parseFindings(text: string, clauses: string[] = []): { department: stri
   }
 }
 
+function guessDepartment(note: string, departments: string[]): string {
+  if (!departments.length) return "General";
+  if (departments.length === 1) return departments[0];
+  const lower = note.toLowerCase();
+  const direct = departments.find((d) => d !== "General" && lower.includes(d.toLowerCase()));
+  if (direct) return direct;
+  const singleWord = departments.filter((d) => d !== "General" && !d.includes(" ")).find((d) => lower.includes(d.toLowerCase()));
+  if (singleWord) return singleWord;
+  const alias = guessByAlias(lower, departments);
+  if (alias) return alias;
+  const nk = keywordsOf(note);
+  let best = "";
+  let bestScore = 0;
+  for (const d of departments) {
+    if (d === "General") continue;
+    const dk = keywordsOf(d);
+    let score = 0;
+    nk.forEach((w) => { if (dk.has(w)) score += 1; });
+    if (score > bestScore) { best = d; bestScore = score; }
+  }
+  if (bestScore >= 1) return best;
+  const firstReal = departments.find((d) => d !== "General");
+  return firstReal || "General";
+}
+
+function guessByAlias(lower: string, departments: string[]): string {
+  const find = (re: RegExp) => departments.find((d) => re.test(d));
+  if (/\bhr\b|human resource|personnel|recruit|attendance|lateness|leave|probation|grievance|appraisal|uniform deposit|training|\babsent\w*|overtime|shift change|staff discount|employee\w*|no-show|absentee\w*/i.test(lower)) {
+    const h = find(/hr|human resource|personnel|admin|recruit/i);
+    if (h) return h;
+  }
+  if (/\bf&b\b|\bfab\b|food|beverage|kitchen|dining|restaurant|chef|meal|cold\s?room|refrigerat|hygiene|reheat|spoiled/i.test(lower)) {
+    const f = find(/food|beverage|kitchen|restaurant|dining|culinary/i);
+    if (f) return f;
+  }
+  if (/housekeep|clean|laundry|trolley|linen|bathroom|vacuum/i.test(lower)) {
+    const hk = find(/housekeep|cleaning|laundry/i);
+    if (hk) return hk;
+  }
+  if (/front|reception|reservation|guest|concierge|check-in|check in|bell|porter|doorman/i.test(lower)) {
+    const fo = find(/front|reception|guest/i);
+    if (fo) return fo;
+  }
+  if (/account|invoice|billing|payment|cash|payroll|salary|deposit|credit|cashier|float/i.test(lower)) {
+    const ac = find(/account|finance|billing/i);
+    if (ac) return ac;
+  }
+  if (/store|stock|inventory|purchase|procurement|supplier|warehouse|par level|ordering/i.test(lower)) {
+    const st = find(/store|inventory|purchase|procurement|warehouse/i);
+    if (st) return st;
+  }
+  return "";
+}
+
 function heuristicFindings(notes: string, departments: string[], clauses: string[] = [], policySections: { num: string; text: string; isSub: boolean }[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string }[] {
   const lines = notes.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   const results: { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string }[] = [];
-  const lowerDeps = departments.map((d) => d.toLowerCase());
   lines.forEach((line) => {
-    const matched = departments.filter((d, i) => line.toLowerCase().includes(lowerDeps[i]));
-    const target = matched.length ? matched[0] : departments.length === 1 ? departments[0] : "General";
+    const target = guessDepartment(line, departments);
     const clause = resolveClause(line, clauses);
     const ref = matchPolicySection(line, policySections);
     results.push({
@@ -251,26 +303,31 @@ export async function POST(req: Request) {
   }
 
   let lastError = "";
-  for (const model of MODELS) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 60000);
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: promptText }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
-          }),
-          signal: controller.signal,
-        }
-      );
+  for (let m = 0; m < MODELS.length; m++) {
+    const model = MODELS[m];
+    const maxAttempts = m === 0 ? 3 : 1;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60000);
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: promptText }] }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+            }),
+            signal: controller.signal,
+          }
+        );
         clearTimeout(timer);
         if (!res.ok) {
           lastError = `${model}: ${res.status} ${await res.text()}`;
-          continue;
+          if (res.status === 503 || res.status === 429 || res.status === 500) continue;
+          break;
         }
         const json = await res.json();
         const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "";
@@ -280,6 +337,7 @@ export async function POST(req: Request) {
       } catch (e: any) {
         lastError = `${model}: ${e?.message || "generation failed"}`;
       }
+    }
   }
 
   const fallback = heuristicFindings(notes, departments, clauses, policySections);
