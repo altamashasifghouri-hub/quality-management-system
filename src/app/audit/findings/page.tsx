@@ -99,6 +99,9 @@ export default function AuditFindings() {
   const [addType, setAddType] = useState<string>("Medium");
   const [addDetail, setAddDetail] = useState("");
   const [deptOptions, setDeptOptions] = useState<Record<string, string[]>>({});
+  const [otherDept, setOtherDept] = useState<{ key: string; value: string } | null>(null);
+
+  function deptKey(planId: string, idx: number) { return `${planId}:${idx}`; }
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
@@ -191,6 +194,13 @@ export default function AuditFindings() {
     await persist(planId, updated);
     const deptMap = { ...deptOptions, [planId]: [...new Set([...(deptOptions[planId] || []), dept.trim()])] };
     setDeptOptions(deptMap);
+    setOtherDept(null);
+  }
+
+  function saveOtherDept(planId: string, idx: number) {
+    if (!otherDept || otherDept.key !== deptKey(planId, idx)) return;
+    if (!otherDept.value.trim()) return showErr("Enter a department name.");
+    changeDepartment(planId, idx, otherDept.value.trim());
   }
 
   async function updateDetail(planId: string, idx: number, detail: string) {
@@ -422,17 +432,37 @@ export default function AuditFindings() {
                                               >
                                                 {TIMELINE_OPTIONS.map((d) => <option key={d} value={d} className="bg-slate-900">Timeline: {d} days</option>)}
                                               </select>
-                                              {deptOptions[plan.id] && deptOptions[plan.id].length > 0 ? (
+                                              <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
+                                              {otherDept?.key === deptKey(plan.id, i) ? (
+                                                <span className="flex items-center gap-1">
+                                                  <input
+                                                    autoFocus
+                                                    value={otherDept.value}
+                                                    onChange={(e) => setOtherDept({ key: otherDept.key, value: e.target.value })}
+                                                    onKeyDown={(e) => { if (e.key === "Enter") saveOtherDept(plan.id, i); if (e.key === "Escape") setOtherDept(null); }}
+                                                    placeholder="Department name"
+                                                    className="px-2 py-1 text-xs rounded-lg border bg-slate-900 text-purple-200 border-purple-500/30 [color-scheme:dark] w-40"
+                                                  />
+                                                  <button onClick={() => saveOtherDept(plan.id, i)} className="px-2 py-1 text-[11px] rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-white">OK</button>
+                                                  <button onClick={() => setOtherDept(null)} className="px-2 py-1 text-[11px] rounded-lg bg-white/10 hover:bg-white/20 text-white">✕</button>
+                                                </span>
+                                              ) : (
                                                 <select
                                                   value={f.department}
-                                                  onChange={(e) => changeDepartment(plan.id, i, e.target.value)}
+                                                  onChange={(e) => {
+                                                    if (e.target.value === "__new__") setOtherDept({ key: deptKey(plan.id, i), value: f.department });
+                                                    else changeDepartment(plan.id, i, e.target.value);
+                                                  }}
                                                   className="px-2 py-1 text-xs rounded-lg border bg-slate-900 text-purple-200 border-purple-500/30 [color-scheme:dark] max-w-[180px]"
                                                   title="Change department"
                                                 >
-                                                  {deptOptions[plan.id].map((d) => <option key={d} value={d} className="bg-slate-900">{d}</option>)}
+                                                  {deptOptions[plan.id] && deptOptions[plan.id].length > 1 ? (
+                                                    deptOptions[plan.id].map((d) => <option key={d} value={d} className="bg-slate-900">{d}</option>)
+                                                  ) : (
+                                                    <option value={f.department} className="bg-slate-900">{f.department}</option>
+                                                  )}
+                                                  <option value="__new__" className="bg-slate-900">+ Other…</option>
                                                 </select>
-                                              ) : (
-                                                <span className="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>
                                               )}
                                               {f.clause && <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">Clause {f.clause}</span>}
                                               {f.policy && (

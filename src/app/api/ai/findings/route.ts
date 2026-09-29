@@ -57,22 +57,82 @@ function parseFindings(text: string, clauses: string[] = []): { department: stri
   }
 }
 
-function heuristicFindings(notes: string, departments: string[], clauses: string[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string }[] {
+function heuristicFindings(notes: string, departments: string[], clauses: string[] = [], policySections: { num: string; text: string; isSub: boolean }[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string }[] {
   const lines = notes.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-  const results: { department: string; clause?: string; type: string; detail: string; recommendation?: string }[] = [];
+  const results: { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string }[] = [];
   const lowerDeps = departments.map((d) => d.toLowerCase());
   lines.forEach((line) => {
     const matched = departments.filter((d, i) => line.toLowerCase().includes(lowerDeps[i]));
     const target = matched.length ? matched[0] : departments.length === 1 ? departments[0] : "General";
     const clause = resolveClause(line, clauses);
+    const ref = matchPolicySection(line, policySections);
     results.push({
       department: target,
       ...(clause ? { clause } : {}),
       type: "Medium",
       detail: line.replace(/^\s*\d+(?:\.\d+)*[\s:.-]*/, "").trim() || line,
+      ...(ref.policy ? { policy: ref.policy } : {}),
+      ...(ref.policyClause ? { policyClause: ref.policyClause } : {}),
     });
   });
   return results;
+}
+
+const STOP_WORDS = new Set([
+  "the", "and", "that", "with", "this", "from", "have", "has", "had", "for", "are", "was", "were",
+  "not", "but", "they", "their", "them", "its", "also", "you", "your", "our", "per", "all", "any",
+  "shall", "must", "will", "may", "when", "than", "then", "into", "upon", "after", "before", "within",
+  "between", "during", "each", "every", "other", "such", "will", "be", "is", "to", "of", "in", "on", "as",
+]);
+
+function keywordsOf(text: string): Set<string> {
+  return new Set((text.toLowerCase().match(/[a-z]{4,}/g) || []).filter((w) => !STOP_WORDS.has(w)));
+}
+
+function parsePolicySections(text: string): { num: string; text: string; isSub: boolean }[] {
+  const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const out: { num: string; text: string; isSub: boolean }[] = [];
+  for (const line of lines) {
+    const m = line.match(/^(\d+(?:\.\d+)*)\s*[\.\)]?\s+[A-Z][^|]{0,140}$/)
+      || line.match(/^(Section\s+\d+(?:\.\d+)*)\s*[:\-.]?\s+[A-Z][^|]{0,140}$/i);
+    if (!m) continue;
+    const num = m[1].toLowerCase().startsWith("section ") ? m[1] : m[1];
+    const isSub = num.includes(".");
+    out.push({ num, text: line.trim(), isSub });
+  }
+  return out;
+}
+
+function matchPolicySection(note: string, sections: { num: string; text: string; isSub: boolean }[]): { policy?: string; policyClause?: string } {
+  if (sections.length === 0) return {};
+  const nk = keywordsOf(note);
+  if (nk.size === 0) return {};
+  let best: { num: string; text: string; isSub: boolean } | null = null;
+  let bestScore = 0;
+  for (const s of sections) {
+    const sk = keywordsOf(s.text);
+    let score = 0;
+    nk.forEach((w) => { if (sk.has(w)) score += 1; });
+    if (score > bestScore) { best = s; bestScore = score; }
+  }
+  if (bestScore < 1 || !best) return {};
+  const text = best.text.replace(/\s+/g, " ").trim();
+  if (best.isSub) {
+    const parentNum = best.num.split(".")[0];
+    const parent = sections.find((s) => s.num === parentNum && !s.isSub);
+    if (parent) return { policy: parent.text.replace(/\s+/g, " ").trim(), policyClause: text };
+    return { policy: text, policyClause: text };
+  }
+  const sub = sections.find((s) => s.num.startsWith(best.num + ".") && keywordsOf(s.text).size > 0 && noteIntersects(note, s));
+  return sub ? { policy: text, policyClause: sub.text.replace(/\s+/g, " ").trim() } : { policy: text, policyClause: text };
+}
+
+function noteIntersects(note: string, s: { text: string }): boolean {
+  const nk = keywordsOf(note);
+  const sk = keywordsOf(s.text);
+  let hits = 0;
+  nk.forEach((w) => { if (sk.has(w)) hits += 1; });
+  return hits >= 1;
 }
 
 export async function POST(req: Request) {
@@ -101,6 +161,7 @@ export async function POST(req: Request) {
   if (departments.length === 0) departments = ["General"];
 
   const apiKey = process.env.GEMINI_API_KEY;
+  const policySections = policyText ? parsePolicySections(policyText) : [];
   const clauseBlock = clauses.length
     ? [
         `Assign each finding to exactly one ISO 9001:2015 clause below (return the FULL clause text exactly as written — never abbreviate it). Use the clauses strictly as provided:`,
@@ -186,7 +247,7 @@ export async function POST(req: Request) {
   ].join("\n");
 
   if (!apiKey) {
-    return NextResponse.json({ findings: heuristicFindings(notes, departments, clauses), source: "heuristic" });
+    return NextResponse.json({ findings: heuristicFindings(notes, departments, clauses, policySections), source: "heuristic" });
   }
 
   let lastError = "";
@@ -221,6 +282,6 @@ export async function POST(req: Request) {
       }
   }
 
-  const fallback = heuristicFindings(notes, departments, clauses);
+  const fallback = heuristicFindings(notes, departments, clauses, policySections);
   return NextResponse.json({ findings: fallback, source: "heuristic", lastError }, { status: 200 });
 }
