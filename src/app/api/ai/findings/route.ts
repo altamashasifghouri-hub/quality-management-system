@@ -38,6 +38,8 @@ function parseFindings(text: string, clauses: string[] = []): { department: stri
       const clause = resolveClause(String(f.clause || ""), clauses);
       const policy = String(f.policy || f.policy_name || "").trim();
       const policyClause = String(f.policyClause || f.policy_clause || f.policy_section || "").trim();
+      const sop = String(f.sop || f.sop_number || "").trim();
+      const sopClause = String(f.sopClause || f.sop_clause || f.sop_section || "").trim();
       return {
         department: String(f.department || "").trim() || "General",
         ...(clause ? { clause } : {}),
@@ -46,6 +48,8 @@ function parseFindings(text: string, clauses: string[] = []): { department: stri
         recommendation: String(f.recommendation || f.recommended_action || "").trim() || undefined,
         ...(policy ? { policy: policy.slice(0, 200) } : {}),
         ...(policyClause ? { policyClause: policyClause.slice(0, 200) } : {}),
+        ...(sop ? { sop: sop.slice(0, 200) } : {}),
+        ...(sopClause ? { sopClause: sopClause.slice(0, 200) } : {}),
       };
     }).filter((f) => f.detail.length > 3);
   } catch {
@@ -119,6 +123,41 @@ export async function POST(req: Request) {
       ].join("\n")
     : "";
 
+  let sopBlock = "";
+  const sopRows: { department: string; sop_number: string; title: string | null; content: string | null }[] = [];
+  try {
+    const { data: sops } = await supabase.from("sop_documents").select("department, sop_number, title, content").order("sop_number", { ascending: true });
+    if (Array.isArray(sops)) {
+      const depLower = departments.map((d) => d.toLowerCase());
+      const relevant = sops.filter((s) => depLower.includes(String(s.department || "").trim().toLowerCase()));
+      const MAX_SOPS = 8;
+      const MAX_PER_SOP = 20000;
+      const MAX_TOTAL = 100000;
+      let budget = 0;
+      for (const s of relevant) {
+        if (sopRows.length >= MAX_SOPS || budget >= MAX_TOTAL) break;
+        const body = String(s.content || "").slice(0, MAX_PER_SOP);
+        sopRows.push({ department: String(s.department || ""), sop_number: String(s.sop_number || ""), title: s.title || null, content: body });
+        budget += body.length;
+      }
+    }
+  } catch { /* sop lookup unavailable */ }
+  if (sopRows.length) {
+    sopBlock = [
+      ``,
+      `SOP REFERENCE — the department Standard Operating Procedures (SOPs) relevant to this audit are provided below, each identified by its SOP number.`,
+      `For EVERY finding, if the observed issue amounts to a failure to follow any SOP below, identify the single most relevant SOP and set:`,
+      `- "sop": the exact SOP number as written (e.g. "SOP-004").`,
+      `- "sopClause": the specific numbered section / step / clause of that SOP that was violated (e.g. "4.2 Daily checklist sign-off"). Return it exactly as written in the SOP.`,
+      `- If a finding also breaches the company policy document above, include "policy" and "policyClause" as well. Both may appear together if both apply.`,
+      `- If the issue does not clearly violate an SOP, OMIT "sop" and "sopClause" entirely.`,
+      ``,
+      ...sopRows.map((s) => `SOP ${s.sop_number}${s.title ? ` — ${s.title}` : ""} (${s.department}):\n${s.content}`),
+      ``,
+      `END SOP REFERENCE.`,
+    ].join("\n");
+  }
+
   const promptText = [
     `You are an internal auditor. Convert the auditor's raw field notes below into a structured list of audit findings.`,
     `For each finding assign the department (MUST be one of these audited departments: ${departments.join(", ")}),`,
@@ -127,12 +166,15 @@ export async function POST(req: Request) {
     `Only use the departments listed above. Do not invent departments.`,
     clauseBlock,
     policyBlock,
+    sopBlock,
     `Return ONLY a JSON array with no markdown, no prose, in this shape:`,
     policyText
-      ? `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done.","policy":"6. Attendance, Lateness & Absence Policy","policyClause":"6.2 Absence & Leave Intimation"}]`
-      : clauses.length
-        ? `[{"department":"Department Name","clause":"4.1 Understanding the organization and its context","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`
-        : `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`,
+      ? `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done.","policy":"6. Attendance, Lateness & Absence Policy","policyClause":"6.2 Absence & Leave Intimation","sop":"SOP-004","sopClause":"4.2 Daily checklist sign-off"}]`
+      : sopRows.length
+        ? `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done.","sop":"SOP-004","sopClause":"4.2 Daily checklist sign-off"}]`
+        : clauses.length
+          ? `[{"department":"Department Name","clause":"4.1 Understanding the organization and its context","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`
+          : `[{"department":"Department Name","type":"Medium","detail":"What was observed.","recommendation":"What should be done."}]`,
     ``,
     `Hotel/Branch: ${branchName || "Not provided"}`,
     `Audit: ${planTitle || "Internal Audit"}`,

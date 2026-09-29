@@ -10,7 +10,7 @@ import { jsPDF } from "jspdf";
 import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
 
-interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; }
+interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; sop?: string; sopClause?: string; }
 interface Schedule { id: string; branch_id: string; branch_name?: string; branch_manager?: string | null; date_from: string; date_to: string; departments: string[]; }
 interface Plan { id: string; schedule_id: string; title: string; criteria: string; description: string | null; findings: Finding[]; overall_result: string; created_at: string; branch_name?: string; document_number?: string | null; date_of_plan?: string | null; prepared_by?: string | null; signature?: string | null; pdf_url?: string | null; pdf_public_id?: string | null; }
 
@@ -432,6 +432,18 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
             for (const ln of doc.splitTextToSize(f.detail, maxWidth)) {
               if (y + 4.8 > maxY) { doc.addPage(); y = margin; }
               doc.text(ln, margin, y); y += 4.8;
+            }
+            if (f.sop) {
+              doc.setFontSize(9.5);
+              doc.setTextColor(13, 148, 136);
+              doc.setFont("helvetica", "bold");
+              const sLine = `SOP Violated: ${f.sop}${f.sopClause ? ` — ${f.sopClause}` : ""}`;
+              for (const ln of doc.splitTextToSize(sLine, maxWidth)) {
+                if (y + 4.5 > maxY) { doc.addPage(); y = margin; }
+                doc.text(ln, margin, y); y += 4.5;
+              }
+              doc.setFont("helvetica", "normal");
+              doc.setFontSize(10);
             }
             if (f.recommendation) {
               doc.setTextColor(51, 65, 85);

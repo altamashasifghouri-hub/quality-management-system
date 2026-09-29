@@ -18,6 +18,8 @@ interface Finding {
   resolved_at?: string | null;
   policy?: string;
   policyClause?: string;
+  sop?: string;
+  sopClause?: string;
 }
 
 interface Plan {
@@ -235,7 +237,9 @@ export default function ProgressPage() {
       head: [["#", "Issue", "Audit", "Branch", "Department", "Type", "Audit date", "Resolved date & time", "Status"]],
       body: allIssues.map((it, i) => [
         String(i + 1),
-        it.finding.detail + (it.finding.policy ? `\nPolicy: ${it.finding.policy}${it.finding.policyClause ? " — " + it.finding.policyClause : ""}` : ""),
+        it.finding.detail
+          + (it.finding.sop ? `\nSOP: ${it.finding.sop}${it.finding.sopClause ? " — " + it.finding.sopClause : ""}` : "")
+          + (it.finding.policy ? `\nPolicy: ${it.finding.policy}${it.finding.policyClause ? " — " + it.finding.policyClause : ""}` : ""),
         it.source === "iso" ? "ISO 9001" : "Internal",
         it.branchName,
         it.finding.department || "—",
@@ -418,6 +422,7 @@ export default function ProgressPage() {
                                   {f.department && <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">{f.department}</span>}
                                   {f.clause && <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Clause {f.clause}</span>}
                                   {f.policy && <span className="px-2 py-0.5 text-[10px] rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-300">Policy: {f.policy}{f.policyClause ? ` — ${f.policyClause}` : ""}</span>}
+                                  {f.sop && <span className="px-2 py-0.5 text-[10px] rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300">{f.sop}{f.sopClause ? ` — ${f.sopClause}` : ""}</span>}
                                 </div>
                               </td>
                               <td className="px-6 py-3 whitespace-nowrap">

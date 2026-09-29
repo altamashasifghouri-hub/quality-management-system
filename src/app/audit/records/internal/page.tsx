@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; policy?: string; policyClause?: string; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; policy?: string; policyClause?: string; sop?: string; sopClause?: string; }
 interface Branch { id: string; name: string; }
 interface Schedule { id: string; branch_id: string; date_from: string; date_to: string; departments: string[]; }
 interface AuditPlan {
@@ -292,12 +292,17 @@ export default function InternalRecords() {
             resolved: false,
             policy: f.policy,
             policyClause: f.policyClause,
+            sop: f.sop,
+            sopClause: f.sopClause,
           });
           existingKey.add(key);
         } else {
           const idx = merged.findIndex((m) => `${(m.department || "").toLowerCase()}|${(m.detail || "").trim().toLowerCase()}` === key);
           if (idx >= 0 && !merged[idx].policy && f.policy) {
             merged[idx] = { ...merged[idx], policy: f.policy, policyClause: f.policyClause };
+          }
+          if (idx >= 0 && !merged[idx].sop && f.sop) {
+            merged[idx] = { ...merged[idx], sop: f.sop, sopClause: f.sopClause };
           }
         }
       });

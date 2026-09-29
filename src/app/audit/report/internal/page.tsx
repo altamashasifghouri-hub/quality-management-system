@@ -14,7 +14,7 @@ interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; branch_manager: string | null; locations: string[] | null; departments: Department[]; }
 interface AuditSchedule { id: string; branch_id: string; date_from: string; date_to: string; departments: string[]; }
 interface SettingsRow { id: number; hr_name: string; ceo_name: string; }
-interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; timeline?: number; policy?: string; policyClause?: string; }
+interface Finding { department: string; type: string; detail: string; recommendation?: string; evidence?: string[]; timeline?: number; policy?: string; policyClause?: string; sop?: string; sopClause?: string; }
 
 interface PlanRow {
   id: string;
@@ -557,6 +557,18 @@ export default function InternalAuditReport() {
             doc.setFont("helvetica", "normal");
             doc.setFontSize(10);
           }
+          if (f.sop) {
+            doc.setFontSize(9.5);
+            doc.setTextColor(13, 148, 136);
+            doc.setFont("helvetica", "bold");
+            const sLine = `SOP Violated: ${f.sop}${f.sopClause ? ` — ${f.sopClause}` : ""}`;
+            for (const ln of doc.splitTextToSize(sLine, maxWidth)) {
+              if (y + 4.5 > maxY) { doc.addPage(); y = margin; }
+              doc.text(ln, margin, y); y += 4.5;
+            }
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+          }
           if (f.recommendation) {
             doc.setTextColor(51, 65, 85);
             for (const ln of doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth)) {
@@ -853,6 +865,7 @@ export default function InternalAuditReport() {
                           <th className="px-3 py-2 font-medium">Department</th>
                           <th className="px-3 py-2 font-medium">Severity</th>
                           <th className="px-3 py-2 font-medium">Policy violated</th>
+                          <th className="px-3 py-2 font-medium">SOP violated</th>
                           <th className="px-3 py-2 font-medium">Detail</th>
                           <th className="px-3 py-2 font-medium">Evidence</th>
                         </tr>
@@ -863,6 +876,7 @@ export default function InternalAuditReport() {
                             <td className="px-3 py-2 text-white/80 whitespace-nowrap">{f.department}</td>
                             <td className="px-3 py-2 text-white/80 whitespace-nowrap">{f.type}</td>
                             <td className="px-3 py-2 text-purple-300 max-w-[200px] break-words">{f.policy ? <>{f.policy}{f.policyClause ? <span className="text-purple-300/60"> — {f.policyClause}</span> : null}</> : <span className="text-blue-200/30">—</span>}</td>
+                            <td className="px-3 py-2 text-teal-300 max-w-[200px] break-words">{f.sop ? <>{f.sop}{f.sopClause ? <span className="text-teal-300/60"> — {f.sopClause}</span> : null}</> : <span className="text-blue-200/30">—</span>}</td>
                             <td className="px-3 py-2 text-white/60">{f.detail}</td>
                             <td className="px-3 py-2">
                               <div className="flex flex-wrap gap-1.5 max-w-[220px]">

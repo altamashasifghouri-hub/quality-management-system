@@ -112,6 +112,16 @@ export default function AuditManagement() {
               <h3 className="text-white font-semibold mb-1">Timelines</h3>
             </div>
           </Link>
+          <Link href="/audit/sop">
+            <div className="bg-gradient-to-br from-teal-500/10 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-teal-500/30 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-teal-400/50 hover:from-teal-500/20 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-teal-500/20 border border-teal-500/30 mb-4 group-hover:bg-teal-500/30 transition-colors">
+                <svg className="w-6 h-6 text-teal-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
+                </svg>
+              </div>
+              <h3 className="text-white font-semibold mb-1">Internal SOPs</h3>
+            </div>
+          </Link>
         </div>
       </main>
     </div>
