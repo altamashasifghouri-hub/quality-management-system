@@ -111,13 +111,14 @@ function guessByAlias(lower: string, departments: string[]): string {
   return "";
 }
 
-function heuristicFindings(notes: string, departments: string[], clauses: string[] = [], policySections: { num: string; text: string; isSub: boolean }[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string }[] {
+function heuristicFindings(notes: string, departments: string[], clauses: string[] = [], policySections: { num: string; text: string; isSub: boolean }[] = [], sopIndex: { sop_number: string; clauses: { num: string; text: string }[] }[] = []): { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string; sop?: string; sopClause?: string }[] {
   const lines = notes.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-  const results: { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string }[] = [];
+  const results: { department: string; clause?: string; type: string; detail: string; recommendation?: string; policy?: string; policyClause?: string; sop?: string; sopClause?: string }[] = [];
   lines.forEach((line) => {
     const target = guessDepartment(line, departments);
     const clause = resolveClause(line, clauses);
     const ref = matchPolicySection(line, policySections);
+    const sopRef = matchSopSection(line, sopIndex);
     results.push({
       department: target,
       ...(clause ? { clause } : {}),
@@ -125,6 +126,7 @@ function heuristicFindings(notes: string, departments: string[], clauses: string
       detail: line.replace(/^\s*\d+(?:\.\d+)*[\s:.-]*/, "").trim() || line,
       ...(ref.policy ? { policy: ref.policy } : {}),
       ...(ref.policyClause ? { policyClause: ref.policyClause } : {}),
+      ...(sopRef.sop ? { sop: sopRef.sop, sopClause: sopRef.sopClause } : {}),
     });
   });
   return results;
@@ -185,6 +187,37 @@ function noteIntersects(note: string, s: { text: string }): boolean {
   let hits = 0;
   nk.forEach((w) => { if (sk.has(w)) hits += 1; });
   return hits >= 1;
+}
+
+function parseNumberedHeadings(text: string): { num: string; text: string }[] {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((l) => /^(\d+(?:\.\d+)*)\s*[\.\)]?\s+[A-Z][^|]{0,160}$/.test(l))
+    .map((l) => {
+      const m = l.match(/^(\d+(?:\.\d+)*)\s*[\.\)]?\s+(.*)$/);
+      return { num: m ? m[1] : "", text: l.trim() };
+    });
+}
+
+function matchSopSection(note: string, sopIndex: { sop_number: string; clauses: { num: string; text: string }[] }[]): { sop?: string; sopClause?: string } {
+  if (!sopIndex.length) return {};
+  const nk = keywordsOf(note);
+  if (nk.size === 0) return {};
+  let bestSop = "";
+  let bestClause = "";
+  let bestScore = 0;
+  for (const sop of sopIndex) {
+    for (const c of sop.clauses) {
+      const sk = keywordsOf(c.text);
+      if (sk.size === 0) continue;
+      let score = 0;
+      nk.forEach((w) => { if (sk.has(w)) score += 1; });
+      if (score > bestScore) { bestScore = score; bestSop = sop.sop_number; bestClause = c.text.replace(/\s+/g, " ").trim(); }
+    }
+  }
+  if (bestScore < 1) return {};
+  return { sop: bestSop, sopClause: bestClause };
 }
 
 export async function POST(req: Request) {
@@ -260,6 +293,7 @@ export async function POST(req: Request) {
   } catch { /* sop lookup unavailable */ }
   const hasPolicyRef = Boolean(policyText);
   const hasSopRef = sopRows.length > 0;
+  const sopIndex = sopRows.map((s) => ({ sop_number: s.sop_number, clauses: parseNumberedHeadings(s.content || "") }));
 
   if (sopRows.length) {
     sopBlock = [
@@ -299,7 +333,7 @@ export async function POST(req: Request) {
   ].join("\n");
 
   if (!apiKey) {
-    return NextResponse.json({ findings: heuristicFindings(notes, departments, clauses, policySections), source: "heuristic" });
+    return NextResponse.json({ findings: heuristicFindings(notes, departments, clauses, policySections, sopIndex), source: "heuristic" });
   }
 
   let lastError = "";
@@ -340,6 +374,6 @@ export async function POST(req: Request) {
     }
   }
 
-  const fallback = heuristicFindings(notes, departments, clauses, policySections);
+  const fallback = heuristicFindings(notes, departments, clauses, policySections, sopIndex);
   return NextResponse.json({ findings: fallback, source: "heuristic", lastError }, { status: 200 });
 }
