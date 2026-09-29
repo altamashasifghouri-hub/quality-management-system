@@ -30,8 +30,7 @@ interface Session {
   status: string;
   policy_text: string;
   policy_file: string;
-  policy_file_path: string;
-  policy_file_mime: string;
+  policy_file_url: string;
 }
 
 export default function InternalRecords() {
@@ -57,8 +56,6 @@ export default function InternalRecords() {
   const [policyText, setPolicyText] = useState("");
   const [policyFileName, setPolicyFileName] = useState("");
   const [policyChars, setPolicyChars] = useState(0);
-  const [policyFilePath, setPolicyFilePath] = useState("");
-  const [policyFileMime, setPolicyFileMime] = useState("");
   const [policyExtracting, setPolicyExtracting] = useState(false);
   const [policyDriveUrl, setPolicyDriveUrl] = useState("");
   const [savingToDrive, setSavingToDrive] = useState(false);
@@ -96,14 +93,12 @@ export default function InternalRecords() {
         status: sessionData.status,
         policy_text: sessionData.policy_text || "",
         policy_file: sessionData.policy_file || "",
-        policy_file_path: sessionData.policy_file_path || "",
-        policy_file_mime: sessionData.policy_file_mime || "",
+        policy_file_url: sessionData.policy_file_url || "",
       });
       setNotepad(sessionData.notepad || "");
       setPolicyText(sessionData.policy_text || "");
       setPolicyFileName(sessionData.policy_file || "");
-      setPolicyFilePath(sessionData.policy_file_path || "");
-      setPolicyFileMime(sessionData.policy_file_mime || "");
+      setPolicyDriveUrl(sessionData.policy_file_url || "");
       setPolicyChars((sessionData.policy_text || "").length || 0);
     }
     setLoading(false);
@@ -147,13 +142,13 @@ export default function InternalRecords() {
         if (err2) return showErr(err2.message);
       } else {
         const { data, error: err2 } = await supabase
-          .from("audit_sessions").insert({ plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_path: "", policy_file_mime: "" }).select("id").single();
+          .from("audit_sessions").insert({ plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" }).select("id").single();
         if (err2) return showErr(err2.message);
         sessId = data?.id as string;
       }
-      setSession({ id: sessId, plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_path: "", policy_file_mime: "" });
+      setSession({ id: sessId, plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" });
       setNotepad("");
-      setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyFilePath(""); setPolicyFileMime(""); setPolicyDriveUrl("");
+      setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
       setSelectedPlanId("");
       showMsg("Audit started. Everything you write here is auto-saved — close it only when you are done.");
       setStarting(false);
@@ -196,13 +191,13 @@ export default function InternalRecords() {
     setClosing(true);
     await persistNotepad(notepad);
     if (session.policy_text !== policyText) {
-      await supabase.from("audit_sessions").update({ policy_text: policyText, policy_file: policyFileName, policy_file_path: policyFilePath, policy_file_mime: policyFileMime, updated_at: new Date().toISOString() }).eq("id", session.id).then(({ error }) => { if (error) showErr(error.message); });
+      await supabase.from("audit_sessions").update({ policy_text: policyText, policy_file: policyFileName, policy_file_url: policyDriveUrl, updated_at: new Date().toISOString() }).eq("id", session.id).then(({ error }) => { if (error) showErr(error.message); });
     }
     const { error: err } = await supabase.from("audit_sessions").update({ status: "closed", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", session.id);
     setClosing(false);
     if (err) return showErr(err.message);
     setSession(null); setNotepad(""); setSelectedPlanId("");
-    setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyFilePath(""); setPolicyFileMime(""); setPolicyDriveUrl("");
+    setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
     showMsg("Audit closed.");
     fetchData();
   }
@@ -222,26 +217,25 @@ export default function InternalRecords() {
       const res = await fetch("/api/policy-extract", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) return showErr(json?.error || "Could not read the file.");
-      let policyPath: string | null = session.policy_file_path || null;
-      let policyMime: string | null = session.policy_file_mime || null;
-      const safe = (file.name || "policy").replace(/[^A-Za-z0-9._-]/g, "_");
-      const path = `policy/${session.id}/${safe}`;
-      const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { contentType: file.type || "application/octet-stream", upsert: true });
-      if (!upErr) {
-        policyPath = path;
-        policyMime = file.type || "";
-      } else {
-        showErr(`Stored on session but could not save the raw file: ${upErr.message}`);
+      let driveUrl: string | null = null;
+      try {
+        const dfd = new FormData();
+        dfd.append("file", file);
+        dfd.append("folderKind", "policies");
+        const dr = await fetch("/api/drive-upload", { method: "POST", body: dfd });
+        const djson = await dr.json().catch(() => ({}));
+        if (dr.ok) driveUrl = djson.url || null;
+        else showErr(`Saved the text but could not save the file to Google Drive: ${djson?.error || "Drive not connected"}`);
+      } catch {
+        showErr("Saved the text but could not save the file to Google Drive.");
       }
       setPolicyText(json.text || "");
       setPolicyFileName(json.fileName || file.name);
       setPolicyChars(json.charCount || 0);
-      setPolicyFilePath(policyPath || "");
-      setPolicyFileMime(policyMime || "");
-      setPolicyDriveUrl("");
-      const { error: err } = await supabase.from("audit_sessions").update({ policy_text: json.text || "", policy_file: json.fileName || file.name, policy_file_path: policyPath, policy_file_mime: policyMime, updated_at: new Date().toISOString() }).eq("id", session.id);
+      setPolicyDriveUrl(driveUrl || "");
+      const { error: err } = await supabase.from("audit_sessions").update({ policy_text: json.text || "", policy_file: json.fileName || file.name, policy_file_url: driveUrl, updated_at: new Date().toISOString() }).eq("id", session.id);
       if (err) showErr(err.message);
-      showMsg(file.type === "application/pdf" ? "Policy PDF loaded — the AI will read the PDF itself (works even for scanned documents)." : "Policy document loaded — findings will be checked against it.");
+      showMsg("Policy loaded — the AI extracted its text and the file is saved in Google Drive. Findings will name the violated policy + section.");
     } catch (e: any) {
       showErr(e?.message || "Could not read the file.");
     } finally {
@@ -251,12 +245,9 @@ export default function InternalRecords() {
 
   async function handleClearPolicy() {
     if (!session) return;
-    if (session.policy_file_path) {
-      await supabase.storage.from("documents").remove([session.policy_file_path]).catch(() => {});
-    }
     policyFileRef.current = null;
-    setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyFilePath(""); setPolicyFileMime(""); setPolicyDriveUrl("");
-    await supabase.from("audit_sessions").update({ policy_text: "", policy_file: "", policy_file_path: "", policy_file_mime: "", updated_at: new Date().toISOString() }).eq("id", session.id);
+    setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
+    await supabase.from("audit_sessions").update({ policy_text: "", policy_file: "", policy_file_url: "", updated_at: new Date().toISOString() }).eq("id", session.id);
     showMsg("Policy reference removed.");
   }
 
@@ -296,8 +287,6 @@ export default function InternalRecords() {
           branchName: sessionPlan.branch_name,
           planTitle: sessionPlan.title,
           policyText,
-          policyFilePath,
-          policyFileMime,
         }),
       });
       const json = await res.json().catch(() => ({}));

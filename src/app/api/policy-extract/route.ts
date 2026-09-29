@@ -8,6 +8,48 @@ export const maxDuration = 60;
 const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_CHARS = 150000;
 const ALLOWED = [".txt", ".md", ".csv", ".docx", ".pdf"];
+const EXTRACT_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro"];
+
+async function aiExtractPdf(buffer: Buffer): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return "";
+  let binary = "";
+  for (let i = 0; i < buffer.length; i += 0x8000) binary += String.fromCharCode(...buffer.subarray(i, i + 0x8000));
+  const data = btoa(binary);
+  const prompt = [
+    `Extract ALL text from this PDF document verbatim and completely.`,
+    `Preserve the document structure:`,
+    `- Keep every numbered section, clause number, heading and sub-heading exactly as written.`,
+    `- Keep tables as readable text (one row per line, cells separated by " | ").`,
+    `- If the pages are scanned images, read the text from the images and transcribe it accurately.`,
+    `- Do not summarize, reword, translate, or omit anything.`,
+    `Return only the extracted text, nothing else.`,
+  ].join("\n");
+  for (const model of EXTRACT_MODELS) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45000);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "application/pdf", data } }] }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+          }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const json = await res.json();
+      const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("").trim();
+      if (text) return text;
+    } catch { /* try next */ }
+  }
+  return "";
+}
 
 function decodeXmlEntities(s: string): string {
   return s
@@ -59,15 +101,18 @@ export async function POST(req: Request) {
 
   try {
     if (ext === ".pdf") {
-      const mod: any = await import("pdf-parse");
-      const PDFParseCtor = mod.PDFParse || mod.default?.PDFParse || mod.default;
-      if (!PDFParseCtor) return NextResponse.json({ error: "PDF engine unavailable." }, { status: 500 });
-      const parser = new PDFParseCtor({ data: buffer });
-      try {
-        const result = await parser.getText();
-        text = String(result?.text || "");
-      } finally {
-        try { parser.destroy(); } catch { /* ignore */ }
+      text = await aiExtractPdf(buffer);
+      if (!text) {
+        const mod: any = await import("pdf-parse");
+        const PDFParseCtor = mod.PDFParse || mod.default?.PDFParse || mod.default;
+        if (!PDFParseCtor) return NextResponse.json({ error: "PDF engine unavailable." }, { status: 500 });
+        const parser = new PDFParseCtor({ data: buffer });
+        try {
+          const result = await parser.getText();
+          text = String(result?.text || "");
+        } finally {
+          try { parser.destroy(); } catch { /* ignore */ }
+        }
       }
     } else if (ext === ".docx") {
       const zip = await JSZip.loadAsync(buffer);

@@ -11,6 +11,7 @@ interface SopDoc {
   sop_number: string;
   title: string | null;
   file_name: string | null;
+  file_url: string | null;
   content: string;
   created_at: string;
 }
@@ -51,6 +52,7 @@ export default function InternalSops() {
       sop_number: s.sop_number,
       title: s.title || null,
       file_name: s.file_name || null,
+      file_url: s.file_url || null,
       content: s.content || "",
       created_at: s.created_at,
     })));
@@ -114,15 +116,22 @@ export default function InternalSops() {
     setSaving(true);
     setError("");
     const id = crypto.randomUUID();
-    let filePath: string | null = null;
-    let fileMime: string | null = null;
+    let fileUrl: string | null = null;
     if (fileRef.current) {
-      const safe = (fileRef.current.name || "sop").replace(/[^A-Za-z0-9._-]/g, "_");
-      const path = `sop/${id}/${safe}`;
-      const { error: upErr } = await supabase.storage.from("documents").upload(path, fileRef.current, { contentType: fileRef.current.type || "application/octet-stream", upsert: true });
-      if (upErr) return showErr(`File upload to storage failed: ${upErr.message}`);
-      filePath = path;
-      fileMime = fileRef.current.type || "application/pdf";
+      try {
+        const fd = new FormData();
+        fd.append("file", fileRef.current);
+        fd.append("folderKind", "sop");
+        const dr = await fetch("/api/drive-upload", { method: "POST", body: fd });
+        const djson = await dr.json().catch(() => ({}));
+        if (dr.ok) {
+          fileUrl = djson.url || null;
+        } else {
+          showErr(`Could not save the file to Google Drive: ${djson?.error || "Drive not connected"}. The SOP text is saved but the file was not uploaded.`);
+        }
+      } catch {
+        showErr("Could not save the file to Google Drive. The SOP text is saved but the file was not uploaded.");
+      }
     }
     const { error: err } = await supabase.from("sop_documents").insert({
       id,
@@ -130,29 +139,21 @@ export default function InternalSops() {
       sop_number: sopNumber.trim(),
       title: title.trim() || null,
       file_name: fileName || null,
+      file_url: fileUrl,
       content: content.trim(),
-      file_path: filePath,
-      file_mime: fileMime,
     });
     setSaving(false);
-    if (err) {
-      if (filePath) await supabase.storage.from("documents").remove([filePath]).catch(() => {});
-      return showErr(err.message);
-    }
+    if (err) return showErr(err.message);
     setShowForm(false);
     setSopNumber(""); setDepartment(""); setTitle(""); setFileName(""); setContent(""); setChars(0); setDriveUrl(""); fileRef.current = null;
-    showMsg("SOP added — the AI will now read the SOP (PDF) and check audit notes against it by department.");
+    showMsg("SOP added — the AI extracted its text and findings are checked against it by department. The file is saved in Google Drive.");
     fetchData();
   }
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this SOP? It will no longer be used to check audit findings.")) return;
-    const { data: row } = await supabase.from("sop_documents").select("file_path").eq("id", id).maybeSingle();
     const { error: err } = await supabase.from("sop_documents").delete().eq("id", id);
     if (err) return showErr(err.message);
-    if (row && (row as any).file_path) {
-      await supabase.storage.from("documents").remove([(row as any).file_path as string]).catch(() => {});
-    }
     showMsg("SOP deleted.");
     fetchData();
   }
@@ -174,7 +175,7 @@ export default function InternalSops() {
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Internal SOPs</h1>
-            <p className="text-blue-200/60">Upload your department SOPs. During audit records, the AI automatically checks the notes against the SOPs of the departments being audited and names the violated SOP number and clause.</p>
+            <p className="text-blue-200/60">Upload each department SOP (PDF, DOCX or TXT). The AI reads the file, extracts the full text, and saves the original file to Google Drive. During audit records, when your notes relate to an SOP, the AI names the violated SOP number and clause.</p>
           </div>
           <button
             onClick={() => { setShowForm((v) => !v); setError(""); }}
@@ -279,6 +280,9 @@ export default function InternalSops() {
                     </div>
                     <p className="text-xs text-blue-200/40 mt-2">
                       {s.file_name || "Pasted text"} · {s.content.length.toLocaleString()} characters · added {new Date(s.created_at).toLocaleDateString()}
+                      {s.file_url && (
+                        <a href={s.file_url} target="_blank" rel="noopener noreferrer" className="ml-2 text-teal-300 underline">· in Google Drive</a>
+                      )}
                     </p>
                   </div>
                   <button onClick={() => handleDelete(s.id)} className="px-3 py-1.5 text-xs rounded-lg bg-red-600/80 hover:bg-red-600 text-white">Delete</button>
