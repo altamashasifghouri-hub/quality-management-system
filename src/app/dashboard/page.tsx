@@ -46,6 +46,16 @@ export default function Dashboard() {
               <h3 className="text-white font-semibold mb-1">Audit Management</h3>
             </div>
           </Link>
+          <Link href="/visit" className="block w-full max-w-sm mx-auto">
+            <div className="bg-gradient-to-br from-cyan-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-cyan-400/25 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-cyan-300/50 hover:from-cyan-500/25 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center h-full">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-cyan-600/20 border border-cyan-500/30 mb-4 group-hover:bg-cyan-600/30 transition-colors">
+                <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+              </div>
+              <h3 className="text-white font-semibold mb-1">Visit Management</h3>
+            </div>
+          </Link>
         </div>
       </main>
     </div>
