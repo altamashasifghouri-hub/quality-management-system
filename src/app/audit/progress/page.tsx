@@ -222,6 +222,7 @@ export default function ProgressPage() {
         ["Resolved %", `${pct}%`],
       ],
       styles: { fontSize: 9, cellPadding: 2.5 },
+      margin: { left: margin, right: margin },
       headStyles: { fillColor: [29, 78, 216], textColor: 255, fontStyle: "bold" },
       columnStyles: { 0: { fontStyle: "bold", cellWidth: 60 } },
     });
@@ -242,6 +243,7 @@ export default function ProgressPage() {
         return [g.name, String(n), String(r), String(n - r), `${p}%`];
       }),
       styles: { fontSize: 9, cellPadding: 2.5 },
+      margin: { left: margin, right: margin },
       headStyles: { fillColor: [29, 78, 216], textColor: 255, fontStyle: "bold" },
     });
     y = (doc as any).lastAutoTable.finalY + 10;
@@ -268,9 +270,10 @@ export default function ProgressPage() {
         it.finding.resolved === true ? fmt12h(it.finding.resolved_at) : "—",
         it.finding.resolved === true ? "Resolved" : "Unresolved",
       ]),
-      styles: { fontSize: 8, cellPadding: 2.5 },
+      styles: { fontSize: 8, cellPadding: 2, overflow: "linebreak" },
+      margin: { left: margin, right: margin },
       headStyles: { fillColor: [29, 78, 216], textColor: 255, fontStyle: "bold" },
-      columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 62 }, 2: { cellWidth: 17 }, 3: { cellWidth: 18 }, 4: { cellWidth: 20 }, 5: { cellWidth: 17 }, 6: { cellWidth: 18 }, 7: { cellWidth: 26 }, 8: { cellWidth: 16 } },
+      columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 54 }, 2: { cellWidth: 14 }, 3: { cellWidth: 15 }, 4: { cellWidth: 17 }, 5: { cellWidth: 15 }, 6: { cellWidth: 16 }, 7: { cellWidth: 22 }, 8: { cellWidth: 14 } },
     });
 
     let y2 = (doc as any).lastAutoTable.finalY + 14;
