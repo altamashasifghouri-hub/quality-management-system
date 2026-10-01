@@ -64,9 +64,12 @@ function fmt12h(iso?: string | null): string {
   if (!iso) return "—";
   const dt = new Date(iso);
   if (isNaN(dt.getTime())) return "—";
+  const hours24 = dt.getHours();
+  const suffix = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const minutes = String(dt.getMinutes()).padStart(2, "0");
   const date = `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
-  const time = dt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
-  return `${date}, ${time}`;
+  return `${date}, ${hours12}:${minutes} ${suffix}`;
 }
 
 export default function ProgressPage() {
@@ -162,6 +165,14 @@ export default function ProgressPage() {
     return { name: g.name, unresolved, resolved, total, pct };
   });
 
+  function renderStatusBadge(resolved: boolean) {
+    return resolved ? (
+      <span className="inline-flex items-center justify-center px-2.5 py-1 text-xs rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 shrink-0">Resolved</span>
+    ) : (
+      <span className="inline-flex items-center justify-center px-2.5 py-1 text-xs rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 shrink-0">Unresolved</span>
+    );
+  }
+
   const totals = groups.reduce(
     (acc, g) => {
       const n = g.plans.reduce((sum, pl) => sum + pl.findings.length, 0);
@@ -196,7 +207,7 @@ export default function ProgressPage() {
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
     doc.text(`Document No: ${docNo}`, pageWidth / 2, margin + 34, { align: "center" });
-    doc.text(`Generated: ${now.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`, pageWidth / 2, margin + 40, { align: "center" });
+    doc.text(`Generated: ${fmt12h(now.toISOString())}`, pageWidth / 2, margin + 40, { align: "center" });
 
     autoTable(doc, {
       startY: margin + 46,
@@ -485,63 +496,93 @@ export default function ProgressPage() {
                 {issues.length === 0 ? (
                   <p className="text-blue-200/40 text-center py-16">No issues found.</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs sm:text-sm table-fixed">
-                      <colgroup>
-                        <col className="w-8 sm:w-10" />
-                        <col />
-                        <col className="w-20 sm:w-24" />
-                        <col className="w-24 sm:w-28" />
-                        <col className="hidden md:table-column w-32 sm:w-40" />
-                        <col className="w-24 sm:w-28" />
-                      </colgroup>
-                      <thead>
-                        <tr className="text-xs uppercase tracking-wide text-blue-200/50 border-b border-white/10">
-                          <th className="px-2 sm:px-4 py-3 font-medium">#</th>
-                          <th className="px-2 sm:px-4 py-3 font-medium">Issue</th>
-                          <th className="px-2 sm:px-4 py-3 font-medium">Audit</th>
-                          <th className="px-2 sm:px-4 py-3 font-medium">Audit date</th>
-                          <th className="hidden md:table-cell px-2 sm:px-4 py-3 font-medium">Resolve date &amp; time</th>
-                          <th className="px-2 sm:px-4 py-3 font-medium">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {issues.map((it, i) => {
-                          const f = it.finding;
-                          const ty = f.type || "Medium";
-                          return (
-                            <tr key={`${it.planId}-${i}`} className="hover:bg-white/[0.03] align-top">
-                              <td className="px-2 sm:px-4 py-3 text-white/50">{i + 1}</td>
-                              <td className="px-2 sm:px-4 py-3">
-                                <div className="text-white break-words line-clamp-3">{f.detail || "—"}</div>
-                                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <>
+                    {/* Mobile / tablet: card list so nothing is ever cut off */}
+                    <div className="lg:hidden divide-y divide-white/5">
+                      {issues.map((it, i) => {
+                        const f = it.finding;
+                        const ty = f.type || "Medium";
+                        return (
+                          <div key={`m-${it.planId}-${i}`} className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="text-xs text-white/40 shrink-0">#{i + 1}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-white break-words">{f.detail || "—"}</p>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                  {renderStatusBadge(f.resolved === true)}
                                   <span className={`px-2 py-0.5 text-[10px] rounded-full border ${TYPE_COLOR[ty] || TYPE_COLOR.Medium}`}>{ty}</span>
+                                  <span className={`px-2 py-0.5 text-[10px] rounded-full border ${it.source === "iso" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-purple-500/20 border-purple-500/40 text-purple-300"}`}>
+                                    {it.source === "iso" ? "ISO 9001" : "Internal"}
+                                  </span>
                                   {f.department && <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200 break-words">{f.department}</span>}
                                   {f.clause && <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Clause {f.clause}</span>}
                                   {f.policy && <span className="px-2 py-0.5 text-[10px] rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-300 break-words">Policy: {f.policy}{f.policyClause ? ` — ${f.policyClause}` : ""}</span>}
                                   {f.sop && <span className="px-2 py-0.5 text-[10px] rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300 break-words">{f.sop}{f.sopClause ? ` — ${f.sopClause}` : ""}</span>}
                                 </div>
-                              </td>
-                              <td className="px-2 sm:px-4 py-3">
-                                <span className={`inline-block px-2 py-0.5 text-[10px] rounded-full border ${it.source === "iso" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-purple-500/20 border-purple-500/40 text-purple-300"}`}>
-                                  {it.source === "iso" ? "ISO 9001" : "Internal"}
-                                </span>
-                              </td>
-                              <td className="px-2 sm:px-4 py-3 text-white/80 break-words">{fmtDate(it.auditDate)}</td>
-                              <td className="hidden md:table-cell px-2 sm:px-4 py-3 text-white/80 break-words">{f.resolved === true ? fmt12h(f.resolved_at) : "—"}</td>
-                              <td className="px-2 sm:px-4 py-3">
-                                {f.resolved === true ? (
-                                  <span className="inline-block px-2.5 py-1 text-xs rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">Resolved</span>
-                                ) : (
-                                  <span className="inline-block px-2.5 py-1 text-xs rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300">Unresolved</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-2 text-[11px] text-blue-200/50">
+                                  <span>Audit date: {fmtDate(it.auditDate)}</span>
+                                  {f.resolved === true && <span>Resolved: {fmt12h(f.resolved_at)}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Desktop: fixed-layout table */}
+                    <div className="hidden lg:block overflow-x-auto">
+                      <table className="w-full table-fixed text-sm">
+                        <colgroup>
+                          <col className="w-10" />
+                          <col />
+                          <col className="w-28" />
+                          <col className="w-28" />
+                          <col className="w-44" />
+                          <col className="w-32" />
+                        </colgroup>
+                        <thead>
+                          <tr className="text-xs uppercase tracking-wide text-blue-200/50 border-b border-white/10">
+                            <th className="px-4 py-3 font-medium">#</th>
+                            <th className="px-4 py-3 font-medium">Issue</th>
+                            <th className="px-4 py-3 font-medium">Audit</th>
+                            <th className="px-4 py-3 font-medium">Audit date</th>
+                            <th className="px-4 py-3 font-medium">Resolve date &amp; time</th>
+                            <th className="px-4 py-3 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {issues.map((it, i) => {
+                            const f = it.finding;
+                            const ty = f.type || "Medium";
+                            return (
+                              <tr key={`d-${it.planId}-${i}`} className="hover:bg-white/[0.03] align-top">
+                                <td className="px-4 py-3 text-white/50">{i + 1}</td>
+                                <td className="px-4 py-3">
+                                  <div className="text-white break-words line-clamp-3">{f.detail || "—"}</div>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                    <span className={`px-2 py-0.5 text-[10px] rounded-full border ${TYPE_COLOR[ty] || TYPE_COLOR.Medium}`}>{ty}</span>
+                                    {f.department && <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200 break-words">{f.department}</span>}
+                                    {f.clause && <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Clause {f.clause}</span>}
+                                    {f.policy && <span className="px-2 py-0.5 text-[10px] rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-300 break-words">Policy: {f.policy}{f.policyClause ? ` — ${f.policyClause}` : ""}</span>}
+                                    {f.sop && <span className="px-2 py-0.5 text-[10px] rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300 break-words">{f.sop}{f.sopClause ? ` — ${f.sopClause}` : ""}</span>}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-block px-2 py-0.5 text-[10px] rounded-full border ${it.source === "iso" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-purple-500/20 border-purple-500/40 text-purple-300"}`}>
+                                    {it.source === "iso" ? "ISO 9001" : "Internal"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-white/80 whitespace-nowrap">{fmtDate(it.auditDate)}</td>
+                                <td className="px-4 py-3 text-white/80 whitespace-nowrap">{f.resolved === true ? fmt12h(f.resolved_at) : "—"}</td>
+                                <td className="px-4 py-3">{renderStatusBadge(f.resolved === true)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
