@@ -35,7 +35,7 @@ export default function Dashboard() {
           You are now signed in to the Quality Management System.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
           <Link href="/audit" className="block w-full max-w-sm mx-auto">
             <div className="bg-gradient-to-br from-blue-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-blue-400/25 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-blue-300/50 hover:from-blue-500/25 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center h-full">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-600/20 border border-blue-500/30 mb-4 group-hover:bg-blue-600/30 transition-colors">
@@ -46,11 +46,21 @@ export default function Dashboard() {
               <h3 className="text-white font-semibold mb-1">Audit Management</h3>
             </div>
           </Link>
-          <Link href="/visit" className="block w-full max-w-sm mx-auto">
+          <Link href="/room-inspections" className="block w-full max-w-sm mx-auto">
             <div className="bg-gradient-to-br from-cyan-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-cyan-400/25 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-cyan-300/50 hover:from-cyan-500/25 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center h-full">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-cyan-600/20 border border-cyan-500/30 mb-4 group-hover:bg-cyan-600/30 transition-colors">
                 <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+              </div>
+              <h3 className="text-white font-semibold mb-1">Room Inspections</h3>
+            </div>
+          </Link>
+          <Link href="/visit" className="block w-full max-w-sm mx-auto">
+            <div className="bg-gradient-to-br from-emerald-600/15 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-emerald-400/25 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-emerald-300/50 hover:from-emerald-500/25 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center h-full">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-emerald-600/20 border border-emerald-500/30 mb-4 group-hover:bg-emerald-600/30 transition-colors">
+                <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
                 </svg>
               </div>
               <h3 className="text-white font-semibold mb-1">Visit Management</h3>
