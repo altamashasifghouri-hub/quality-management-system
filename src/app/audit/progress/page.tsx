@@ -153,6 +153,15 @@ export default function ProgressPage() {
   }
   const issues = collectIssues(selected);
 
+  const branchTiles = groups.map((g) => {
+    const list = collectIssues([g]);
+    const unresolved = list.filter((i) => i.finding.resolved !== true);
+    const resolved = list.filter((i) => i.finding.resolved === true);
+    const total = list.length;
+    const pct = total ? Math.round((resolved.length / total) * 100) : 0;
+    return { name: g.name, unresolved, resolved, total, pct };
+  });
+
   const totals = groups.reduce(
     (acc, g) => {
       const n = g.plans.reduce((sum, pl) => sum + pl.findings.length, 0);
@@ -273,7 +282,7 @@ export default function ProgressPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
       <Navbar />
-      <main className="max-w-7xl mx-auto px-6 py-16">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
         <div className="mb-8">
           <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -365,6 +374,86 @@ export default function ProgressPage() {
             </div>
 
             <div>
+              <div className="px-6 py-4 border-b border-white/10 bg-white/5 backdrop-blur-sm border rounded-t-2xl">
+                <h2 className="text-lg font-semibold text-white">Branch-wise issues</h2>
+                <p className="text-xs text-blue-200/40 mt-1">Each branch tile lists every unresolved and resolved issue.</p>
+              </div>
+              {branchTiles.length === 0 ? (
+                <p className="text-blue-200/40 text-center py-12 bg-white/5 border border-white/10 rounded-b-2xl">No branches with issues yet.</p>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-4">
+                  {branchTiles.map((bt) => (
+                    <div key={bt.name} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                      <button onClick={() => setActiveBranch(activeBranch === bt.name ? null : bt.name)}
+                        className="w-full text-left px-5 py-4 border-b border-white/10 hover:bg-white/[0.03] transition-colors">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-white font-semibold">{bt.name}</span>
+                          <span className="text-xs text-blue-200/50">
+                            {bt.total} issues · <span className="text-amber-300">{bt.unresolved.length} unresolved</span> · <span className="text-emerald-300">{bt.resolved.length} resolved</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-2">
+                          <div className="h-2 flex-1 rounded-full bg-white/10 overflow-hidden">
+                            <div className="h-full rounded-full bg-emerald-500/80" style={{ width: `${bt.pct}%` }} />
+                          </div>
+                          <span className="text-xs font-semibold text-emerald-300 w-10 text-right">{bt.pct}%</span>
+                        </div>
+                      </button>
+
+                      <div className="p-4 space-y-4">
+                        <div>
+                          <p className="text-xs font-semibold text-amber-300 uppercase tracking-wide mb-2">Unresolved ({bt.unresolved.length})</p>
+                          {bt.unresolved.length === 0 ? (
+                            <p className="text-xs text-blue-200/30">Nothing outstanding.</p>
+                          ) : (
+                            <ul className="space-y-1.5">
+                              {bt.unresolved.map((it, i) => {
+                                const ty = it.finding.type || "Medium";
+                                return (
+                                  <li key={`u${i}`} className="text-xs text-white/80 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
+                                    <span className="line-clamp-2">{it.finding.detail || "—"}</span>
+                                    <span className="flex flex-wrap items-center gap-1.5 mt-1">
+                                      <span className={`px-1.5 py-0.5 rounded-full border ${TYPE_COLOR[ty] || TYPE_COLOR.Medium}`}>{ty}</span>
+                                      {it.finding.department && <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">{it.finding.department}</span>}
+                                      <span className="text-blue-200/40">{it.planTitle}</span>
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wide mb-2">Resolved ({bt.resolved.length})</p>
+                          {bt.resolved.length === 0 ? (
+                            <p className="text-xs text-blue-200/30">None resolved yet.</p>
+                          ) : (
+                            <ul className="space-y-1.5">
+                              {bt.resolved.map((it, i) => {
+                                const ty = it.finding.type || "Medium";
+                                return (
+                                  <li key={`r${i}`} className="text-xs text-white/80 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-2">
+                                    <span className="line-clamp-2">{it.finding.detail || "—"}</span>
+                                    <span className="flex flex-wrap items-center gap-1.5 mt-1">
+                                      <span className={`px-1.5 py-0.5 rounded-full border ${TYPE_COLOR[ty] || TYPE_COLOR.Medium}`}>{ty}</span>
+                                      {it.finding.department && <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">{it.finding.department}</span>}
+                                      <span className="text-blue-200/40">Resolved {fmtDate(it.finding.resolved_at)}</span>
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
               <div className="flex flex-wrap gap-2 mb-6">
                 <button
                   onClick={() => setActiveBranch(null)}
@@ -397,15 +486,23 @@ export default function ProgressPage() {
                   <p className="text-blue-200/40 text-center py-16">No issues found.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full text-left text-xs sm:text-sm table-fixed">
+                      <colgroup>
+                        <col className="w-8 sm:w-10" />
+                        <col />
+                        <col className="w-20 sm:w-24" />
+                        <col className="w-24 sm:w-28" />
+                        <col className="hidden md:table-column w-32 sm:w-40" />
+                        <col className="w-24 sm:w-28" />
+                      </colgroup>
                       <thead>
                         <tr className="text-xs uppercase tracking-wide text-blue-200/50 border-b border-white/10">
-                          <th className="px-6 py-3 font-medium">#</th>
-                          <th className="px-6 py-3 font-medium">Issue</th>
-                          <th className="px-6 py-3 font-medium">Audit</th>
-                          <th className="px-6 py-3 font-medium">Audit date</th>
-                          <th className="px-6 py-3 font-medium">Resolve date &amp; time</th>
-                          <th className="px-6 py-3 font-medium">Status</th>
+                          <th className="px-2 sm:px-4 py-3 font-medium">#</th>
+                          <th className="px-2 sm:px-4 py-3 font-medium">Issue</th>
+                          <th className="px-2 sm:px-4 py-3 font-medium">Audit</th>
+                          <th className="px-2 sm:px-4 py-3 font-medium">Audit date</th>
+                          <th className="hidden md:table-cell px-2 sm:px-4 py-3 font-medium">Resolve date &amp; time</th>
+                          <th className="px-2 sm:px-4 py-3 font-medium">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
@@ -414,29 +511,29 @@ export default function ProgressPage() {
                           const ty = f.type || "Medium";
                           return (
                             <tr key={`${it.planId}-${i}`} className="hover:bg-white/[0.03] align-top">
-                              <td className="px-6 py-3 text-white/50">{i + 1}</td>
-                              <td className="px-6 py-3 max-w-md">
-                                <div className="text-white line-clamp-2">{f.detail || "—"}</div>
+                              <td className="px-2 sm:px-4 py-3 text-white/50">{i + 1}</td>
+                              <td className="px-2 sm:px-4 py-3">
+                                <div className="text-white break-words line-clamp-3">{f.detail || "—"}</div>
                                 <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                   <span className={`px-2 py-0.5 text-[10px] rounded-full border ${TYPE_COLOR[ty] || TYPE_COLOR.Medium}`}>{ty}</span>
-                                  {f.department && <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">{f.department}</span>}
+                                  {f.department && <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200 break-words">{f.department}</span>}
                                   {f.clause && <span className="px-2 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">Clause {f.clause}</span>}
-                                  {f.policy && <span className="px-2 py-0.5 text-[10px] rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-300">Policy: {f.policy}{f.policyClause ? ` — ${f.policyClause}` : ""}</span>}
-                                  {f.sop && <span className="px-2 py-0.5 text-[10px] rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300">{f.sop}{f.sopClause ? ` — ${f.sopClause}` : ""}</span>}
+                                  {f.policy && <span className="px-2 py-0.5 text-[10px] rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-300 break-words">Policy: {f.policy}{f.policyClause ? ` — ${f.policyClause}` : ""}</span>}
+                                  {f.sop && <span className="px-2 py-0.5 text-[10px] rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300 break-words">{f.sop}{f.sopClause ? ` — ${f.sopClause}` : ""}</span>}
                                 </div>
                               </td>
-                              <td className="px-6 py-3 whitespace-nowrap">
-                                <span className={`px-2 py-0.5 text-[10px] rounded-full border ${it.source === "iso" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-purple-500/20 border-purple-500/40 text-purple-300"}`}>
+                              <td className="px-2 sm:px-4 py-3">
+                                <span className={`inline-block px-2 py-0.5 text-[10px] rounded-full border ${it.source === "iso" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-purple-500/20 border-purple-500/40 text-purple-300"}`}>
                                   {it.source === "iso" ? "ISO 9001" : "Internal"}
                                 </span>
                               </td>
-                              <td className="px-6 py-3 text-white/80 whitespace-nowrap">{fmtDate(it.auditDate)}</td>
-                              <td className="px-6 py-3 text-white/80 whitespace-nowrap">{f.resolved === true ? fmt12h(f.resolved_at) : "—"}</td>
-                              <td className="px-6 py-3 whitespace-nowrap">
+                              <td className="px-2 sm:px-4 py-3 text-white/80 break-words">{fmtDate(it.auditDate)}</td>
+                              <td className="hidden md:table-cell px-2 sm:px-4 py-3 text-white/80 break-words">{f.resolved === true ? fmt12h(f.resolved_at) : "—"}</td>
+                              <td className="px-2 sm:px-4 py-3">
                                 {f.resolved === true ? (
-                                  <span className="px-2.5 py-1 text-xs rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">Resolved</span>
+                                  <span className="inline-block px-2.5 py-1 text-xs rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">Resolved</span>
                                 ) : (
-                                  <span className="px-2.5 py-1 text-xs rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300">Unresolved</span>
+                                  <span className="inline-block px-2.5 py-1 text-xs rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300">Unresolved</span>
                                 )}
                               </td>
                             </tr>
