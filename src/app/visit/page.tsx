@@ -33,10 +33,12 @@ interface VisitRecord {
   updated_at: string;
   pdf_url?: string | null;
   pdf_public_id?: string | null;
+  signature?: string | null;
   branch_name?: string;
 }
 
 const LOGO = "/logo.jpg";
+const SIG_DEFAULT = "/signature.png";
 
 function sanitizeFile(name: string) {
   return name.replace(/[^a-zA-Z0-9]+/g, "_");
@@ -98,6 +100,7 @@ export default function VisitManagementPage() {
   const [oUploading, setOUploading] = useState(false);
 
   const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
+  const [sigBusyId, setSigBusyId] = useState<string | null>(null);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -123,6 +126,7 @@ export default function VisitManagementPage() {
         updated_at: x.updated_at,
         pdf_url: x.pdf_url || null,
         pdf_public_id: x.pdf_public_id || null,
+        signature: x.signature || null,
         branch_name: x.branches?.name || "",
       }))
     );
@@ -423,7 +427,7 @@ export default function VisitManagementPage() {
       });
       y = (doc as any).lastAutoTable.finalY + 16;
 
-      if (y > maxY - 34) {
+      if (y > maxY - 52) {
         doc.addPage();
         y = margin;
       }
@@ -431,9 +435,25 @@ export default function VisitManagementPage() {
       doc.setTextColor(51, 65, 85);
       doc.text(`Prepared by: ${rec.visited_by || "_______________"}`, margin, y);
       doc.text(`Visit Date: ${fmtDate(rec.visit_date)}`, pageWidth - margin, y, { align: "right" });
-      y += 14;
-      doc.text("Signature:", margin, y);
-      y += 22;
+      y += 8;
+      const sigUrl = rec.signature || SIG_DEFAULT;
+      let sigPlaced = false;
+      try {
+        const sigData = await loadPdfImage(sigUrl);
+        doc.addImage(sigData, "JPEG", margin, y, 45, 22);
+        sigPlaced = true;
+      } catch {
+        /* signature image unavailable */
+      }
+      if (sigPlaced) {
+        doc.setDrawColor(30, 41, 59);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y + 24, margin + 55, y + 24);
+      }
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Signature", margin + 7, y + (sigPlaced ? 29 : 14));
+      y += sigPlaced ? 40 : 24;
 
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184);
@@ -485,6 +505,38 @@ export default function VisitManagementPage() {
   async function handleOpenSavedPdf(rec: VisitRecord) {
     if (!rec.pdf_url) return;
     window.open(rec.pdf_url, "_blank", "noopener");
+  }
+
+  async function handleSignatureUpload(visitId: string, file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return showErr("Signature must be an image file.");
+    if (file.size > 2 * 1024 * 1024) return showErr("Signature image must be under 2MB.");
+    setSigBusyId(visitId);
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Could not read the file."));
+      reader.readAsDataURL(file);
+    }).catch(() => "");
+    setSigBusyId(null);
+    if (!dataUrl) return showErr("Could not read the signature image.");
+    const { error: err } = await supabase
+      .from("visit_records")
+      .update({ signature: dataUrl, updated_at: new Date().toISOString() })
+      .eq("id", visitId);
+    if (err) return showErr(err.message);
+    showMsg("Signature saved for this visit.");
+    fetchData();
+  }
+
+  async function handleClearSignature(visitId: string) {
+    const { error: err } = await supabase
+      .from("visit_records")
+      .update({ signature: null, updated_at: new Date().toISOString() })
+      .eq("id", visitId);
+    if (err) return showErr(err.message);
+    showMsg("Signature reset to default.");
+    fetchData();
   }
 
   async function handleStatusChange(id: string, status: string) {
@@ -762,6 +814,35 @@ export default function VisitManagementPage() {
                                   <button onClick={() => handleAddObservation(r.id)} disabled={oSaving} className="mt-3 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white text-sm font-medium rounded-lg transition-colors">
                                     {oSaving ? "Saving..." : "Save Evidence"}
                                   </button>
+                                </div>
+
+                                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                                  <p className="text-sm font-medium text-white mb-1">Approval signature</p>
+                                  <p className="text-xs text-emerald-200/50 mb-3">
+                                    Used on the PDF report for this visit. Leave empty to use your saved default signature.
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <div className="bg-white px-3 py-2 rounded-lg border border-white/10 min-h-[56px] flex items-center">
+                                      <img src={r.signature || SIG_DEFAULT} alt="Signature" className="h-11 object-contain" />
+                                    </div>
+                                    <label className="px-3 py-2 text-xs rounded-lg bg-emerald-600/30 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-600/50 transition-colors cursor-pointer">
+                                      {sigBusyId === r.id ? "Uploading..." : r.signature ? "Replace" : "Upload"}
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          handleSignatureUpload(r.id, e.target.files?.[0] || null);
+                                          e.target.value = "";
+                                        }}
+                                      />
+                                    </label>
+                                    {r.signature && (
+                                      <button onClick={() => handleClearSignature(r.id)} className="text-xs text-red-400 hover:text-red-300 transition-colors">
+                                        Reset to default
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             )}
