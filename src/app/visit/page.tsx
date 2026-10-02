@@ -2,10 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
+import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
 
 interface Branch { id: string; name: string; }
 
@@ -28,7 +31,15 @@ interface VisitRecord {
   observations: Observation[];
   created_at: string;
   updated_at: string;
+  pdf_url?: string | null;
+  pdf_public_id?: string | null;
   branch_name?: string;
+}
+
+const LOGO = "/logo.jpg";
+
+function sanitizeFile(name: string) {
+  return name.replace(/[^a-zA-Z0-9]+/g, "_");
 }
 
 const OUTCOMES = ["Observation", "Compliant", "Follow-up"];
@@ -86,6 +97,8 @@ export default function VisitManagementPage() {
   const [oSaving, setOSaving] = useState(false);
   const [oUploading, setOUploading] = useState(false);
 
+  const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
+
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -108,6 +121,8 @@ export default function VisitManagementPage() {
         observations: Array.isArray(x.observations) ? x.observations : [],
         created_at: x.created_at,
         updated_at: x.updated_at,
+        pdf_url: x.pdf_url || null,
+        pdf_public_id: x.pdf_public_id || null,
         branch_name: x.branches?.name || "",
       }))
     );
@@ -170,13 +185,306 @@ export default function VisitManagementPage() {
   async function handleDeleteVisit(id: string) {
     const rec = records.find((r) => r.id === id);
     if (!rec) return;
-    if (!confirm("Delete this visit record and its evidence notes?")) return;
+    if (!confirm("Delete this visit record, its evidence notes, and its saved PDF?")) return;
     const pics = rec.observations.flatMap((o) => o.pictures || []);
     const { error: err } = await supabase.from("visit_records").delete().eq("id", id);
     if (err) return showErr(err.message);
     await Promise.all(pics.map((u) => deleteDriveFileByUrl(u)));
+    if (rec.pdf_url) await deleteDriveFileByUrl(rec.pdf_url);
     showMsg("Visit record deleted.");
     fetchData();
+  }
+
+  async function generateVisitPdf(rec: VisitRecord) {
+    setPdfBusyId(rec.id);
+    setError("");
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxWidth = pageWidth - margin * 2;
+      const maxY = pageHeight - 12;
+      let y = margin;
+
+      const green: [number, number, number] = [5, 150, 105];
+
+      try {
+        const logoUrl = await loadPdfImage(LOGO);
+        doc.addImage(logoUrl, "JPEG", (pageWidth - 48) / 2, y, 48, 34);
+      } catch {
+        /* logo unavailable */
+      }
+
+      y += 48;
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text("VISIT EVIDENCE REPORT", pageWidth / 2, y, { align: "center" });
+      y += 8;
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        `Reference No: QMS/VE/${rec.visit_date?.replace(/-/g, "/") || "—"}/${sanitizeFile(rec.purpose || rec.id).slice(0, 12)}`,
+        pageWidth - margin,
+        y,
+        { align: "right" }
+      );
+      y += 14;
+
+      const ensure = (needed: number) => {
+        if (y + needed > maxY) {
+          doc.addPage();
+          y = margin;
+        }
+      };
+
+      const line = (t: string, size = 10, color: [number, number, number] = [30, 41, 59], gap = 5) => {
+        doc.setFontSize(size);
+        doc.setTextColor(color[0], color[1], color[2]);
+        const lines = doc.splitTextToSize(t, maxWidth);
+        const adv = size * 0.5;
+        lines.forEach((ln: string) => {
+          ensure(adv);
+          doc.text(ln, margin, y);
+          y += adv;
+        });
+        y += gap;
+      };
+
+      const sectionTitle = (t: string) => {
+        if (y > maxY - 24) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.setFontSize(12);
+        doc.setTextColor(green[0], green[1], green[2]);
+        doc.text(t, margin, y);
+        y += 7;
+        doc.setDrawColor(green[0], green[1], green[2]);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 7;
+      };
+
+      const totalPics = rec.observations.reduce((s, o) => s + (o.pictures?.length || 0), 0);
+
+      autoTable(doc, {
+        startY: y,
+        theme: "grid",
+        head: [["Field", "Value"]],
+        body: [
+          ["Branch", rec.branch_name || "—"],
+          ["Visit Date", fmtDate(rec.visit_date)],
+          ["Purpose", rec.purpose || "—"],
+          ["Visited By", rec.visited_by || "—"],
+          ["Status", rec.status || "—"],
+          ["Evidence Notes", String(rec.observations.length)],
+          ["Picture Evidence", String(totalPics)],
+          ["Generated On", new Date().toLocaleString("en-GB")],
+        ],
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        headStyles: { fillColor: green },
+        columnStyles: { 0: { fontStyle: "bold", cellWidth: 55 } },
+        margin: { left: margin, right: margin },
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+
+      if (rec.context) {
+        sectionTitle("1. Visit Context");
+        line(rec.context, 10, [51, 65, 85]);
+      }
+
+      const evidenceTitle = rec.context ? "2. Evidence Details" : "1. Evidence Details";
+      sectionTitle(evidenceTitle);
+
+      if (rec.observations.length === 0) {
+        line("No evidence recorded for this visit.", 10, [100, 116, 139]);
+      }
+
+      for (let i = 0; i < rec.observations.length; i++) {
+        const o = rec.observations[i];
+        if (y > maxY - 20) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(green[0], green[1], green[2]);
+        const head = `Evidence ${String(i + 1).padStart(2, "0")}${o.area ? ` — ${o.area}` : ""}  [${o.outcome}]`;
+        for (const ln of doc.splitTextToSize(head, maxWidth)) {
+          ensure(5.5);
+          doc.text(ln, margin, y);
+          y += 5.5;
+        }
+        doc.setFont("helvetica", "normal");
+        y += 2;
+
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        for (const ln of doc.splitTextToSize(o.context, maxWidth)) {
+          ensure(4.8);
+          doc.text(ln, margin, y);
+          y += 4.8;
+        }
+        y += 4;
+
+        const pics = o.pictures || [];
+        if (pics.length > 0) {
+          const thumbW = 56;
+          const thumbMaxH = 44;
+          const gap = 8;
+          const perRow = Math.max(1, Math.floor((maxWidth + gap) / (thumbW + gap)));
+          let ex = margin;
+          let ey = y;
+          let placed = 0;
+          for (const url of pics) {
+            if (placed > 0 && placed % perRow === 0) {
+              ex = margin;
+              ey += thumbMaxH + 8;
+            }
+            if (ey + thumbMaxH + 6 > maxY) {
+              doc.addPage();
+              ex = margin;
+              ey = margin;
+              placed = 0;
+            }
+            let dataUrl = "";
+            try {
+              dataUrl = await loadPdfImage(url);
+            } catch {
+              placed++;
+              continue;
+            }
+            let dw = 1;
+            let dh = 1;
+            try {
+              const dims = await imageDims(dataUrl);
+              dw = dims.width;
+              dh = dims.height;
+            } catch {
+              /* keep 1:1 */
+            }
+            let w = thumbW;
+            let h = (thumbW * dh) / (dw || 1);
+            if (h > thumbMaxH) {
+              h = thumbMaxH;
+              w = (h * dw) / (dh || 1);
+            }
+            const iy = ey + (thumbMaxH - h) / 2;
+            doc.addImage(dataUrl, "JPEG", ex, iy, w, h);
+            doc.setDrawColor(148, 163, 184);
+            doc.setLineWidth(0.2);
+            doc.rect(ex, iy, w, h);
+            doc.link(ex, iy, w, h, { url: zoomUrl(url) });
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text("Click for full view", ex + w / 2, iy + h + 3, { align: "center" });
+            ex += thumbW + gap;
+            placed++;
+          }
+          y = ey + thumbMaxH + 10;
+        }
+        y += 4;
+        if (y <= maxY - 4) {
+          doc.setDrawColor(203, 213, 225);
+          doc.setLineWidth(0.15);
+          doc.line(margin, y, pageWidth - margin, y);
+        }
+        y += 7;
+      }
+
+      sectionTitle(`${rec.context ? "3" : "2"}. Evidence Summary`);
+      if (y > maxY - 14) {
+        doc.addPage();
+        y = margin;
+      }
+      const byOutcome = OUTCOMES.map((oc) => {
+        const refs: number[] = [];
+        rec.observations.forEach((o, idx) => {
+          if (o.outcome === oc) refs.push(idx + 1);
+        });
+        const pics = rec.observations.filter((o) => o.outcome === oc).reduce((s, o) => s + (o.pictures?.length || 0), 0);
+        return [oc, String(refs.length), String(pics), refs.map((n) => String(n).padStart(2, "0")).join(", ") || "—"];
+      });
+      byOutcome.push([
+        "Total",
+        String(rec.observations.length),
+        String(totalPics),
+        "",
+      ]);
+      autoTable(doc, {
+        startY: y,
+        theme: "grid",
+        head: [["Outcome", "Notes", "Pictures", "References"]],
+        body: byOutcome,
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        headStyles: { fillColor: green },
+        columnStyles: { 0: { fontStyle: "bold", cellWidth: 40 } },
+        margin: { left: margin, right: margin },
+      });
+      y = (doc as any).lastAutoTable.finalY + 16;
+
+      if (y > maxY - 34) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.setFontSize(10);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Prepared by: ${rec.visited_by || "_______________"}`, margin, y);
+      doc.text(`Visit Date: ${fmtDate(rec.visit_date)}`, pageWidth - margin, y, { align: "right" });
+      y += 14;
+      doc.text("Signature:", margin, y);
+      y += 22;
+
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text("Generated from the Quality Management System — Visit Management module.", margin, y);
+      doc.text(
+        "Picture evidence is stored in Google Drive; click any thumbnail in the PDF to open the full-size image.",
+        margin,
+        y + 4
+      );
+
+      const filename = `Visit_Evidence_${sanitizeFile(rec.branch_name || "Branch")}_${sanitizeFile(rec.purpose || rec.id)}.pdf`;
+      doc.save(filename);
+
+      setPdfBusyId(`${rec.id}:saving`);
+      try {
+        const blob = doc.output("blob");
+        const formData = new FormData();
+        formData.append("file", blob, filename);
+        formData.append("folderKind", "evidence");
+        const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.url) {
+            if (rec.pdf_url) await deleteDriveFileByUrl(rec.pdf_url);
+            const { error: updErr } = await supabase
+              .from("visit_records")
+              .update({ pdf_url: json.url, pdf_public_id: json.fileId || null, updated_at: new Date().toISOString() })
+              .eq("id", rec.id);
+            if (!updErr) {
+              showMsg("PDF generated and saved to Google Drive.");
+              fetchData();
+            }
+          }
+        } else {
+          const errJson = await res.json().catch(() => ({}));
+          showErr(driveErrorMessage(errJson, "PDF downloaded, but saving to Google Drive failed."));
+        }
+      } catch {
+        showErr("PDF downloaded, but saving to Google Drive failed.");
+      } finally {
+        setPdfBusyId(null);
+      }
+    } catch (e: any) {
+      showErr(e?.message || "Could not generate PDF.");
+      setPdfBusyId(null);
+    }
+  }
+
+  async function handleOpenSavedPdf(rec: VisitRecord) {
+    if (!rec.pdf_url) return;
+    window.open(rec.pdf_url, "_blank", "noopener");
   }
 
   async function handleStatusChange(id: string, status: string) {
@@ -269,7 +577,7 @@ export default function VisitManagementPage() {
         <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Visit Management</h1>
-            <p className="text-emerald-200/60">Branch-wise visit records with written context and picture evidence stored in Google Drive</p>
+            <p className="text-emerald-200/60">Branch-wise visit records with written context and picture evidence stored in Google Drive. Use PDF on any visit to export a report.</p>
           </div>
           <select
             value={branchFilter}
@@ -366,6 +674,23 @@ export default function VisitManagementPage() {
                                 <button onClick={() => setOpenId(isOpen ? null : r.id)} className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600/30 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-600/50 transition-colors">
                                   {isOpen ? "Close" : "Evidence"}
                                 </button>
+                                <button
+                                  onClick={() => generateVisitPdf(r)}
+                                  disabled={pdfBusyId === r.id}
+                                  title={r.pdf_url ? "Saved in Google Drive — generates a fresh copy" : "Generate PDF and save to Google Drive"}
+                                  className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600/30 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-600/50 disabled:opacity-50 transition-colors"
+                                >
+                                  {pdfBusyId === r.id ? "Generating..." : "PDF"}
+                                </button>
+                                {r.pdf_url && (
+                                  <button
+                                    onClick={() => handleOpenSavedPdf(r)}
+                                    title="Open the PDF saved in Google Drive"
+                                    className="px-3 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white/70 hover:bg-white/15 transition-colors"
+                                  >
+                                    Open PDF
+                                  </button>
+                                )}
                                 <button onClick={() => handleDeleteVisit(r.id)} className="text-xs text-red-400 hover:text-red-300 transition-colors">Delete</button>
                               </div>
                             </div>
