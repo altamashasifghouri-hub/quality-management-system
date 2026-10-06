@@ -416,7 +416,7 @@ export default function InternalAuditReport() {
     try {
       const plan = planById.get(report.audit_id);
       const branch = branchById.get(report.branch_id || plan?.branch_id || "");
-      const manager = branch?.branch_manager || "—";
+      const ceo = settingsRow?.ceo_name || "Hassan Ateeq";
       const sigUrl = plan?.signature || SIG_DEFAULT;
 
       await preloadPdfImages([
@@ -508,7 +508,7 @@ export default function InternalAuditReport() {
           ["Report Reference No.", report.document_number || "—"],
           ["Report Date", formatDDMMYYYY(report.report_date)],
           ["Prepared by", report.prepared_by || "—"],
-          ["Distributed to", manager],
+          ["Distributed to", ceo],
         ],
         styles: { fontSize: 9, cellPadding: 2.5 },
         headStyles: { fillColor: [29, 78, 216] },
@@ -700,9 +700,8 @@ export default function InternalAuditReport() {
         theme: "grid",
         head: [["Role", "Name"]],
         body: [
-          ["Branch Manager", manager],
+          ["CEO", ceo],
           ["HR", settingsRow?.hr_name || "—"],
-          ["CEO", settingsRow?.ceo_name || "—"],
         ],
         styles: { fontSize: 9, cellPadding: 2.5 },
         headStyles: { fillColor: [29, 78, 216] },
@@ -1052,7 +1051,7 @@ export default function InternalAuditReport() {
                 <div><span className="text-slate-500">Report Reference No.:</span> <span className="font-medium">{viewingReport.document_number || "—"}</span></div>
                 <div><span className="text-slate-500">Report Date:</span> <span className="font-medium">{formatDDMMYYYY(viewingReport.report_date)}</span></div>
                 <div><span className="text-slate-500">Prepared by:</span> <span className="font-medium">{viewingReport.prepared_by || "—"}</span></div>
-                <div><span className="text-slate-500">Distributed to:</span> <span className="font-medium">{viewingBranch?.branch_manager || "—"}</span></div>
+                <div><span className="text-slate-500">Distributed to:</span> <span className="font-medium">{settingsRow?.ceo_name || "Hassan Ateeq"}</span></div>
               </div>
 
               <DocSection num="1" title="Executive Summary">
@@ -1193,16 +1192,12 @@ export default function InternalAuditReport() {
                   </thead>
                   <tbody>
                     <tr className="odd:bg-slate-100">
-                      <td className="border border-slate-300 px-3 py-1.5 font-medium">Branch Manager</td>
-                      <td className="border border-slate-300 px-3 py-1.5">{viewingBranch?.branch_manager || "—"}</td>
+                      <td className="border border-slate-300 px-3 py-1.5 font-medium">CEO</td>
+                      <td className="border border-slate-300 px-3 py-1.5">{settingsRow?.ceo_name || "Hassan Ateeq"}</td>
                     </tr>
                     <tr className="odd:bg-slate-100">
                       <td className="border border-slate-300 px-3 py-1.5 font-medium">HR</td>
                       <td className="border border-slate-300 px-3 py-1.5">{settingsRow?.hr_name || "—"}</td>
-                    </tr>
-                    <tr className="odd:bg-slate-100">
-                      <td className="border border-slate-300 px-3 py-1.5 font-medium">CEO</td>
-                      <td className="border border-slate-300 px-3 py-1.5">{settingsRow?.ceo_name || "—"}</td>
                     </tr>
                   </tbody>
                 </table>
