@@ -369,12 +369,20 @@ export default function InternalAuditReport() {
   }
 
   async function handleDownloadPdf(report: AuditReport) {
-    const target = report.pdf_public_id || report.pdf_url;
-    if (!target) return showErr("No saved PDF for this report yet.");
+    if (!report.pdf_public_id) {
+      setDownloadingFile(true);
+      const built = await buildReportDoc(report);
+      if (built) {
+        built.doc.save(built.filename);
+        showMsg("PDF downloaded.");
+      }
+      setDownloadingFile(false);
+      return;
+    }
     setDownloadingFile(true);
     setError("");
     try {
-      const res = await fetch(`/api/drive-download?fileId=${encodeURIComponent(target)}`);
+      const res = await fetch(`/api/drive-download?fileId=${encodeURIComponent(report.pdf_public_id)}`);
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         return showErr(driveErrorMessage(errJson, "Could not download the saved PDF."));
@@ -403,8 +411,7 @@ export default function InternalAuditReport() {
     return loadPdfImage(url);
   }
 
-  async function generatePdf(report: AuditReport) {
-    setDownloadingPdf(true);
+  async function buildReportDoc(report: AuditReport): Promise<{ doc: jsPDF; filename: string } | null> {
     setError("");
     try {
       const plan = planById.get(report.audit_id);
@@ -709,39 +716,50 @@ export default function InternalAuditReport() {
       } catch { /* signature image unavailable */ }
 
       const filename = `${sanitizeFile(branch?.name || plan?.branch_name || "Internal")}_Internal_Audit_Report.pdf`;
-      doc.save(filename);
-
-      setPdfSaving(true);
-      try {
-        const blob = doc.output("blob");
-        const formData = new FormData();
-        formData.append("file", blob, filename);
-        formData.append("folderKind", "report");
-        const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.url) {
-            const { error: updErr } = await supabase
-              .from("audit_reports")
-              .update({ pdf_url: json.url, pdf_public_id: json.fileId || null, updated_at: new Date().toISOString() })
-              .eq("id", report.id);
-            if (!updErr) {
-              showMsg("PDF generated and saved to Google Drive.");
-              fetchData();
-            }
-          }
-        } else {
-          const errJson = await res.json().catch(() => ({}));
-          showErr(driveErrorMessage(errJson, "PDF generated but upload failed."));
-        }
-      } catch {
-        showErr("PDF generated but upload failed.");
-      } finally {
-        setPdfSaving(false);
-      }
+      return { doc, filename };
     } catch (e: any) {
       showErr(e?.message || "Could not generate PDF.");
+      return null;
+    }
+  }
+
+  async function generatePdf(report: AuditReport) {
+    setDownloadingPdf(true);
+    const built = await buildReportDoc(report);
+    if (!built) {
+      setDownloadingPdf(false);
+      return;
+    }
+    const { doc, filename } = built;
+    doc.save(filename);
+
+    setPdfSaving(true);
+    try {
+      const blob = doc.output("blob");
+      const formData = new FormData();
+      formData.append("file", blob, filename);
+      formData.append("folderKind", "report");
+      const res = await fetch("/api/drive-upload", { method: "POST", body: formData });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.url) {
+          const { error: updErr } = await supabase
+            .from("audit_reports")
+            .update({ pdf_url: json.url, pdf_public_id: json.fileId || null, updated_at: new Date().toISOString() })
+            .eq("id", report.id);
+          if (!updErr) {
+            showMsg("PDF generated and saved to Google Drive.");
+            fetchData();
+          }
+        }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        showErr(driveErrorMessage(errJson, "PDF generated but upload failed."));
+      }
+    } catch {
+      showErr("PDF generated but upload failed.");
     } finally {
+      setPdfSaving(false);
       setDownloadingPdf(false);
     }
   }
@@ -996,12 +1014,12 @@ export default function InternalAuditReport() {
                     {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : viewingReport.pdf_url ? "Regenerate PDF" : "Generate & Save PDF"}
                   </button>
                 <button
-                  onClick={() => (viewingReport.pdf_url ? handleDownloadPdf(viewingReport) : generatePdf(viewingReport))}
-                  disabled={downloadingFile || downloadingPdf}
-                  title={viewingReport.pdf_url ? "Download the saved report from Google Drive" : "Generate and download this report"}
+                  onClick={() => handleDownloadPdf(viewingReport)}
+                  disabled={downloadingFile}
+                  title="Download this report to your device"
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
                 >
-                  {downloadingFile ? "Downloading..." : downloadingPdf ? "Generating..." : "Download PDF"}
+                  {downloadingFile ? "Downloading..." : "Download PDF"}
                 </button>
                 {viewingReport.pdf_url && (
                   <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
