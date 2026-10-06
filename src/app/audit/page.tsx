@@ -122,6 +122,16 @@ export default function AuditManagement() {
               <h3 className="text-white font-semibold mb-1">Internal SOPs</h3>
             </div>
           </Link>
+          <Link href="/audit/code-of-ethics">
+            <div className="bg-gradient-to-br from-rose-500/10 via-blue-900/20 to-slate-900/50 backdrop-blur-md border border-rose-500/30 rounded-xl p-6 shadow-lg shadow-blue-950/40 hover:border-rose-400/50 hover:from-rose-500/20 transition-all duration-300 hover:-translate-y-1 cursor-pointer group text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-rose-500/20 border border-rose-500/30 mb-4 group-hover:bg-rose-500/30 transition-colors">
+                <svg className="w-6 h-6 text-rose-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                </svg>
+              </div>
+              <h3 className="text-white font-semibold mb-1">Code of Ethics</h3>
+            </div>
+          </Link>
         </div>
       </main>
     </div>
