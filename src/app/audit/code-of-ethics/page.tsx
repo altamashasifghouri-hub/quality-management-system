@@ -19,6 +19,7 @@ type Block =
   | { k: "p"; t: string }
   | { k: "b"; t: string }
   | { k: "li"; t: string }
+  | { k: "hl"; t: string }
   | { k: "hr" };
 
 const INTRO: Block[] = [
@@ -40,8 +41,9 @@ const BODY: Block[] = [
   { k: "p", t: "I will promptly disclose any actual or perceived impairment to my objectivity." },
   { k: "p", t: "I will base my conclusions only on sufficient, reliable, and relevant evidence." },
   { k: "b", t: "In particular:" },
-  { k: "li", t: "I will not accept any food items, drinks, gifts, hospitality, or favors that may impair (or appear to impair) my objectivity." },
-  { k: "li", t: "I will keep all professional interactions free from personal discussions and casual or joking behavior that could reduce seriousness or create an unprofessional atmosphere." },
+  { k: "hl", t: "I will not accept any food items, drinks, gifts, hospitality, or favors that may impair (or appear to impair) my objectivity." },
+  { k: "hl", t: "I will not accept any item, food, drink, gift, or favor offered from the guest side under any circumstances." },
+  { k: "hl", t: "I will keep all professional interactions free from personal discussions and casual or joking behavior that could reduce seriousness or create an unprofessional atmosphere." },
 
   { k: "h", t: "3. Competency" },
   { k: "p", t: "I will only accept work for which I have (or can reasonably obtain) the necessary knowledge, skills, and experience." },
@@ -62,7 +64,7 @@ const BODY: Block[] = [
   { k: "p", t: "I will maintain a strictly professional demeanor at all times while performing my duties." },
   { k: "p", t: "I will avoid jokes, casual banter, personal discussions, and any informal behavior that may undermine the seriousness and independence of the internal audit role." },
   { k: "p", t: "I will treat every interaction with dignity, respect, and focus on the work at hand." },
-  { k: "p", t: "I will not respond to greetings or pleasantries such as 'Hi', 'Hello', or 'Assalam o Alaikum'. Every interaction will be kept strictly to professional matters, and I will not enter into casual exchange of any kind while performing my duties." },
+  { k: "hl", t: "I will not respond to greetings or pleasantries such as 'Hi', 'Hello', or 'Assalam o Alaikum'. Every interaction will be kept strictly to professional matters, and I will not enter into casual exchange of any kind while performing my duties." },
 
   { k: "hr" },
   { k: "b", t: "I accept full personal responsibility for living by this Code." },
@@ -204,6 +206,29 @@ export default function CodeOfEthicsPage() {
             y += 6;
           });
           y += 3;
+          return;
+        }
+        if (b.k === "hl") {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9.5);
+          const lines = doc.splitTextToSize(b.t, maxWidth - 16);
+          const lineH = 4.6;
+          const boxH = lines.length * lineH + 8;
+          ensure(boxH + 5);
+          const boxY = y;
+          doc.setFillColor(254, 243, 199);
+          doc.roundedRect(margin, boxY, maxWidth, boxH, 2, 2, "F");
+          doc.setFillColor(245, 158, 11);
+          doc.rect(margin, boxY, 2.2, boxH, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9.5);
+          doc.setTextColor(30, 41, 59);
+          let ty = boxY + 7.2;
+          lines.forEach((ln: string) => {
+            doc.text(ln, margin + 8, ty);
+            ty += lineH;
+          });
+          y = boxY + boxH + 5;
           return;
         }
         const bold = b.k === "b";
@@ -477,6 +502,15 @@ export default function CodeOfEthicsPage() {
                       <h3 key={i} className="text-base font-bold text-blue-700 pt-2">
                         {b.t}
                       </h3>
+                    );
+                  if (b.k === "hl")
+                    return (
+                      <p
+                        key={i}
+                        className="text-sm font-medium leading-relaxed text-slate-900 bg-amber-50 border-l-4 border-amber-500 rounded-r-lg px-4 py-2.5 my-1.5"
+                      >
+                        {b.t}
+                      </p>
                     );
                   if (b.k === "li")
                     return (
