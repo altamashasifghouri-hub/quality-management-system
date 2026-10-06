@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
-import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
+import { loadPdfImage, imageDims, zoomUrl, preloadPdfImages } from "@/lib/pdf-image";
 
 interface Branch { id: string; name: string; }
 
@@ -203,6 +203,8 @@ export default function VisitManagementPage() {
     setPdfBusyId(rec.id);
     setError("");
     try {
+      await preloadPdfImages([LOGO, rec.signature || SIG_DEFAULT, ...rec.observations.flatMap((o) => o.pictures || [])]);
+
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();

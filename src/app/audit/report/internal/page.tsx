@@ -7,7 +7,7 @@ import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
-import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
+import { loadPdfImage, imageDims, zoomUrl, preloadPdfImages } from "@/lib/pdf-image";
 import { driveErrorMessage } from "@/lib/drive-error";
 
 interface Department { id: string; name: string; branch_id: string; }
@@ -418,6 +418,12 @@ export default function InternalAuditReport() {
       const branch = branchById.get(report.branch_id || plan?.branch_id || "");
       const manager = branch?.branch_manager || "—";
       const sigUrl = plan?.signature || SIG_DEFAULT;
+
+      await preloadPdfImages([
+        ...report.findings.flatMap((f) => f.evidence || []),
+        LOGO,
+        sigUrl,
+      ]);
 
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();

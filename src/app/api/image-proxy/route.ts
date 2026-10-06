@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   try { target = decodeURIComponent(raw); } catch { /* keep raw */ }
   if (!/^https?:\/\//.test(target)) return new NextResponse("Invalid url", { status: 400 });
   try {
-    const res = await fetch(target, { cache: "no-store" });
+    const res = await fetch(target, { next: { revalidate: 86400 } });
     if (!res.ok) return new NextResponse("Upstream error", { status: 502 });
     const buf = Buffer.from(await res.arrayBuffer());
     const contentType = res.headers.get("content-type") || "image/jpeg";

@@ -49,3 +49,20 @@ export function imageDims(dataUrl: string): Promise<{ width: number; height: num
 export function zoomUrl(url: string): string {
   return url.replace(/sz=w\d+/, "sz=w1600");
 }
+
+export async function preloadPdfImages(urls: string[], concurrency = 8): Promise<void> {
+  const pending = Array.from(new Set(urls.filter(Boolean))).filter((u) => !cache.has(u));
+  if (pending.length === 0) return;
+  let i = 0;
+  const workers = Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
+    while (i < pending.length) {
+      const url = pending[i++];
+      try {
+        await loadPdfImage(url);
+      } catch {
+        /* failed images are retried (and skipped) at render time */
+      }
+    }
+  });
+  await Promise.all(workers);
+}
