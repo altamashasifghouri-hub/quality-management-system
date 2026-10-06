@@ -165,6 +165,7 @@ export default function InternalAuditReport() {
   const [saving, setSaving] = useState(false);
   const [pdfSaving, setPdfSaving] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingFile, setDownloadingFile] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<ReportForm>(emptyForm());
@@ -365,6 +366,37 @@ export default function InternalAuditReport() {
     showMsg("Report deleted.");
     setViewingReportId(null); setEditingReportId(null);
     fetchData();
+  }
+
+  async function handleDownloadPdf(report: AuditReport) {
+    const target = report.pdf_public_id || report.pdf_url;
+    if (!target) return showErr("No saved PDF for this report yet.");
+    setDownloadingFile(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/drive-download?fileId=${encodeURIComponent(target)}`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        return showErr(driveErrorMessage(errJson, "Could not download the saved PDF."));
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("content-disposition") || "";
+      const match = cd.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1] : `${sanitizeFile(report.title || report.id)}.pdf`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 4000);
+      showMsg("PDF downloaded.");
+    } catch (e: any) {
+      showErr(e?.message || "Could not download the saved PDF.");
+    } finally {
+      setDownloadingFile(false);
+    }
   }
 
   function loadImageData(url: string): Promise<string> {
@@ -961,12 +993,17 @@ export default function InternalAuditReport() {
               <h2 className="text-xl font-bold text-white">Internal Audit Report</h2>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => generatePdf(viewingReport)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                    {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : viewingReport.pdf_url ? "Download PDF" : "Generate & Save PDF"}
+                    {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : viewingReport.pdf_url ? "Regenerate PDF" : "Generate & Save PDF"}
                   </button>
                 {viewingReport.pdf_url && (
-                  <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
-                    View Saved PDF
-                  </a>
+                  <>
+                    <button onClick={() => handleDownloadPdf(viewingReport)} disabled={downloadingFile} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                      {downloadingFile ? "Downloading..." : "Download PDF"}
+                    </button>
+                    <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
+                      View Saved PDF
+                    </a>
+                  </>
                 )}
                 <button onClick={() => { setViewingReportId(null); onPlanChange(viewingReport.audit_id); setShowForm(true); }} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Edit</button>
                 <button onClick={() => { if (confirm("Delete report?")) handleDeleteReport(viewingReport.id); }} className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium">Delete</button>
