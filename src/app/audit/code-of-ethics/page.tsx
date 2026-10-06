@@ -11,6 +11,8 @@ import { loadLocalPdfImage } from "@/lib/pdf-image";
 
 const LOGO = "/logo.jpg";
 const SIG_DEFAULT = "/signature.png";
+const DOC_NO = "QMS/COE/2026/001";
+const SIGNER = "Altamash Asif Ghouri";
 
 type Block =
   | { k: "h"; t: string }
@@ -173,6 +175,11 @@ export default function CodeOfEthicsPage() {
       doc.setFontSize(11);
       doc.setTextColor(71, 85, 105);
       doc.text("Internal Auditor", pageWidth / 2, y, { align: "center" });
+      y += 10;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Document No: ${DOC_NO}`, pageWidth / 2, y, { align: "center" });
       y += 14;
 
       const draw = (b: Block) => {
@@ -219,44 +226,58 @@ export default function CodeOfEthicsPage() {
       BODY.forEach(draw);
 
       y += 6;
-      ensure(58);
+      ensure(64);
+
+      const signer = name.trim() || SIGNER;
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.setTextColor(30, 41, 59);
       doc.text("Signature:", margin, y);
-      doc.text("Date:", margin, y + 20);
+      doc.text("Date:", margin, y + 26);
 
       doc.setDrawColor(30, 41, 59);
       doc.setLineWidth(0.3);
       doc.line(margin + 30, y + 4, margin + 145, y + 4);
-      doc.line(margin + 30, y + 24, margin + 145, y + 24);
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      doc.setTextColor(30, 41, 59);
-      doc.text(fmtDate(date), margin + 34, y + 22);
+      doc.line(margin + 30, y + 30, margin + 145, y + 30);
 
       const sigData = await loadLocalPdfImage(sigUrl);
-        if (sigData) {
-          doc.addImage(sigData, "JPEG", margin + 34, y - 15, 54, 18);
-        }
+      if (sigData) {
+        doc.addImage(sigData, "JPEG", margin + 34, y - 15, 54, 18);
+      }
 
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(signer, margin + 30, y + 10);
+
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
-      doc.text("Internal Auditor", margin + 30, y + 9);
-      y += 34;
+      doc.text("Internal Auditor", margin + 30, y + 15);
 
-      if (name.trim()) {
-        doc.setFontSize(9.5);
-        doc.setTextColor(30, 41, 59);
-        doc.text(`Signed by: ${name.trim()}`, margin, y);
-        y += 6;
-      }
+      doc.setFontSize(11);
+      doc.setTextColor(30, 41, 59);
+      doc.text(fmtDate(date), margin + 34, y + 28);
+
+      y += 44;
 
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184);
       doc.text("Generated from the Quality Management System — Audit Management module.", margin, y);
+
+      const pages = doc.getNumberOfPages();
+      for (let p = 1; p <= pages; p++) {
+        doc.setPage(p);
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.3);
+        doc.line(margin, pageHeight - 11, pageWidth - margin, pageHeight - 11);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`${DOC_NO}  \u2022  Code of Ethics — Internal Auditor`, margin, pageHeight - 6);
+        doc.text(`Page ${p} of ${pages}`, pageWidth - margin, pageHeight - 6, { align: "right" });
+      }
 
       const filename = `Code_of_Ethics_Internal_Auditor_${fmtDate(date).replace(/\//g, "-")}.pdf`;
       return { doc, filename };
@@ -347,7 +368,8 @@ export default function CodeOfEthicsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-5">
             <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
-              <h2 className="text-lg font-semibold text-white mb-4">Sign &amp; Download</h2>
+              <h2 className="text-lg font-semibold text-white mb-1">Sign &amp; Download</h2>
+              <p className="text-xs text-blue-200/60 mb-4">Document No: {DOC_NO}</p>
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm text-blue-200/70 mb-1">Date on the document</label>
@@ -359,12 +381,12 @@ export default function CodeOfEthicsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-blue-200/70 mb-1">Signed by (optional)</label>
+                  <label className="block text-sm text-blue-200/70 mb-1">Signed by (shown below signature)</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Full name"
+                    placeholder={SIGNER}
                     className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -438,7 +460,8 @@ export default function CodeOfEthicsPage() {
               </div>
               <p className="text-xs text-slate-400 uppercase tracking-widest text-center mb-1">Quality Management System</p>
               <h2 className="text-xl font-bold text-slate-900 text-center">Code of Ethics</h2>
-              <p className="text-sm font-medium text-slate-600 text-center mb-6">Internal Auditor</p>
+              <p className="text-sm font-medium text-slate-600 text-center mb-1">Internal Auditor</p>
+              <p className="text-xs text-slate-500 text-center mb-6">Document No: {DOC_NO}</p>
 
               {INTRO.map((b, i) => (
                 <p key={i} className="text-sm text-slate-800 leading-relaxed mb-1">
@@ -477,7 +500,8 @@ export default function CodeOfEthicsPage() {
                       <img src={rec?.signature || SIG_DEFAULT} alt="Signature" className="h-14 object-contain" />
                     </div>
                     <div className="border-t border-slate-700 w-52" />
-                    <p className="text-xs text-slate-500 mt-1">Internal Auditor</p>
+                    <p className="text-sm font-semibold text-slate-800 mt-1.5">{name.trim() || SIGNER}</p>
+                    <p className="text-xs text-slate-500">Internal Auditor</p>
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-800 mb-1">Date:</p>
@@ -488,7 +512,6 @@ export default function CodeOfEthicsPage() {
                     <p className="text-xs text-slate-500 mt-1">&nbsp;</p>
                   </div>
                 </div>
-                {name.trim() && <p className="text-sm text-slate-800 mt-4">Signed by: {name.trim()}</p>}
               </div>
             </div>
           </div>
