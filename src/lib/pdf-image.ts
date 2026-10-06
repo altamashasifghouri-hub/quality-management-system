@@ -50,6 +50,49 @@ export function zoomUrl(url: string): string {
   return url.replace(/sz=w\d+/, "sz=w1600");
 }
 
+export async function loadLocalPdfImage(url: string, max = 900): Promise<string> {
+  if (!url) return "";
+  if (url.startsWith("data:")) return url;
+  const cached = cache.get(url);
+  if (cached) return cached;
+  try {
+    const res = await fetch(url, { cache: "force-cache" });
+    if (!res.ok) return "";
+    const blob = await res.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result));
+      fr.onerror = () => reject(new Error("read failed"));
+      fr.readAsDataURL(blob);
+    });
+    const jpeg = await new Promise<string>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return resolve(dataUrl);
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.9));
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+    if (jpeg) cache.set(url, jpeg);
+    return jpeg;
+  } catch {
+    return "";
+  }
+}
+
 export async function preloadPdfImages(urls: string[], concurrency = 8): Promise<void> {
   const pending = Array.from(new Set(urls.filter(Boolean))).filter((u) => !cache.has(u));
   if (pending.length === 0) return;

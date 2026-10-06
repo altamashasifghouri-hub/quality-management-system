@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
-import { loadPdfImage, preloadPdfImages } from "@/lib/pdf-image";
+import { loadLocalPdfImage } from "@/lib/pdf-image";
 
 const LOGO = "/logo.jpg";
 const SIG_DEFAULT = "/signature.png";
@@ -141,7 +141,7 @@ export default function CodeOfEthicsPage() {
 
   async function buildDoc(): Promise<{ doc: jsPDF; filename: string } | null> {
     const sigUrl = rec?.signature || SIG_DEFAULT;
-    await preloadPdfImages([LOGO, sigUrl]);
+    await Promise.all([loadLocalPdfImage(LOGO), loadLocalPdfImage(sigUrl)]);
 
     try {
       const doc = new jsPDF();
@@ -160,14 +160,12 @@ export default function CodeOfEthicsPage() {
         }
       };
 
-      try {
-        const logoUrl = await loadPdfImage(LOGO);
-        doc.addImage(logoUrl, "JPEG", (pageWidth - 46) / 2, y, 46, 33);
-      } catch {
-        /* logo unavailable */
+      const logoUrl = await loadLocalPdfImage(LOGO);
+      if (logoUrl) {
+        doc.addImage(logoUrl, "JPEG", (pageWidth - 40) / 2, y, 40, 40);
       }
 
-      y += 46;
+      y += 48;
       doc.setFontSize(15);
       doc.setTextColor(15, 23, 42);
       doc.text("Code of Ethics", pageWidth / 2, y, { align: "center" });
@@ -239,12 +237,10 @@ export default function CodeOfEthicsPage() {
       doc.setTextColor(30, 41, 59);
       doc.text(fmtDate(date), margin + 34, y + 22);
 
-      try {
-        const sigData = await loadPdfImage(sigUrl);
-        doc.addImage(sigData, "JPEG", margin + 34, y - 15, 54, 18);
-      } catch {
-        /* signature image unavailable */
-      }
+      const sigData = await loadLocalPdfImage(sigUrl);
+        if (sigData) {
+          doc.addImage(sigData, "JPEG", margin + 34, y - 15, 54, 18);
+        }
 
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
