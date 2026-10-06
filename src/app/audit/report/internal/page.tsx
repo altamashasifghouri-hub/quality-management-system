@@ -995,15 +995,18 @@ export default function InternalAuditReport() {
                 <button onClick={() => generatePdf(viewingReport)} disabled={downloadingPdf} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
                     {downloadingPdf ? (pdfSaving ? "Saving to Google Drive..." : "Generating...") : viewingReport.pdf_url ? "Regenerate PDF" : "Generate & Save PDF"}
                   </button>
+                <button
+                  onClick={() => (viewingReport.pdf_url ? handleDownloadPdf(viewingReport) : generatePdf(viewingReport))}
+                  disabled={downloadingFile || downloadingPdf}
+                  title={viewingReport.pdf_url ? "Download the saved report from Google Drive" : "Generate and download this report"}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {downloadingFile ? "Downloading..." : downloadingPdf ? "Generating..." : "Download PDF"}
+                </button>
                 {viewingReport.pdf_url && (
-                  <>
-                    <button onClick={() => handleDownloadPdf(viewingReport)} disabled={downloadingFile} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
-                      {downloadingFile ? "Downloading..." : "Download PDF"}
-                    </button>
-                    <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
-                      View Saved PDF
-                    </a>
-                  </>
+                  <a href={viewingReport.pdf_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
+                    View Saved PDF
+                  </a>
                 )}
                 <button onClick={() => { setViewingReportId(null); onPlanChange(viewingReport.audit_id); setShowForm(true); }} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Edit</button>
                 <button onClick={() => { if (confirm("Delete report?")) handleDeleteReport(viewingReport.id); }} className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium">Delete</button>
