@@ -437,6 +437,9 @@ export default function CodeOfEthicsPage() {
               <p className="text-sm font-semibold text-slate-700">Preview — document generated with the date above</p>
             </div>
             <div className="p-6 sm:p-9 max-h-[70vh] overflow-y-auto">
+              <div className="pt-4 mb-3 text-center">
+                <img src={LOGO} alt="Logo" className="mx-auto h-16 w-auto object-contain" />
+              </div>
               <p className="text-xs text-slate-400 uppercase tracking-widest text-center mb-1">Quality Management System</p>
               <h2 className="text-xl font-bold text-slate-900 text-center">Code of Ethics</h2>
               <p className="text-sm font-medium text-slate-600 text-center mb-6">Internal Auditor</p>
