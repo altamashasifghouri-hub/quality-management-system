@@ -143,9 +143,14 @@ export default function Iso9001Report() {
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [evStatus, setEvStatus] = useState<{ planId: string; idx: number; text: string; ok: boolean } | null>(null);
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
+  function flashEv(planId: string, idx: number, text: string, ok = true, autoClear = false) {
+    setEvStatus({ planId, idx, text, ok });
+    if (autoClear) setTimeout(() => setEvStatus((s) => (s && s.planId === planId && s.idx === idx ? null : s)), 6000);
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -294,17 +299,18 @@ export default function Iso9001Report() {
     const isVideo = file.type.startsWith("video/");
     const isAudio = file.type.startsWith("audio/");
     const kindLabel = isVideo ? "Video" : isAudio ? "Voice recording" : "Picture";
+    const fail = (msg: string) => { flashEv(planId, idx, msg, false, true); return showErr(msg); };
     try {
       let evidenceUrl = "";
 
       if (isVideo || isAudio) {
         const tooBig = mediaUploadError(file);
-        if (tooBig) return showErr(tooBig);
+        if (tooBig) return fail(tooBig);
 
         let posterFileId = "";
         if (isVideo) {
           try {
-            setMessage("Preparing video poster…");
+            flashEv(planId, idx, "Capturing video poster…");
             const poster = await captureVideoPoster(file);
             if (poster) {
               const fd = new FormData();
@@ -318,51 +324,61 @@ export default function Iso9001Report() {
           }
         }
 
-        setMessage("");
+        flashEv(planId, idx, isAudio ? "Starting voice upload…" : "Starting video upload…");
         const initRes = await fetch("/api/drive-resumable", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "init", name: file.name, mime: file.type, size: file.size, folderKind: "evidence" }),
         });
         const initJson = await initRes.json().catch(() => ({}));
-        if (!initRes.ok || !initJson.uploadUrl) return showErr(driveErrorMessage(initJson, "Could not start the upload."));
+        if (!initRes.ok || !initJson.uploadUrl) return fail(driveErrorMessage(initJson, "Could not start the upload."));
 
         setUploadPct(0);
-        let uploaded: { id?: string };
+        let putId = "";
+        let putError = "";
         try {
-          uploaded = await putFileToDrive(initJson.uploadUrl, file, file.type, setUploadPct);
+          const putResult = await putFileToDrive(initJson.uploadUrl, file, file.type, setUploadPct);
+          putId = putResult?.id || "";
+        } catch (e: any) {
+          // Drive omits Access-Control-Allow-Origin on the resumable PUT response,
+          // so the browser can fail to read a response even when the bytes landed.
+          // "finish" re-checks Drive by nonce, so only treat this as fatal if that fails too.
+          putError = e?.message || "The upload did not complete.";
         } finally {
           setUploadPct(null);
         }
-        if (!uploaded?.id) return showErr("The upload did not complete.");
 
+        flashEv(planId, idx, "Publishing to Drive…");
         const finRes = await fetch("/api/drive-resumable", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "finish", fileId: uploaded.id }),
+          body: JSON.stringify({ action: "finish", fileId: putId, nonce: initJson.nonce, since: initJson.since, name: file.name, mime: file.type }),
         });
         const finJson = await finRes.json().catch(() => ({}));
-        if (!finRes.ok) return showErr(driveErrorMessage(finJson, "Uploaded, but it could not be shared."));
-        evidenceUrl = isAudio ? buildAudioEvidence(uploaded.id) : buildVideoEvidence(uploaded.id, posterFileId);
+        const finalId = finJson.fileId || putId;
+        if (!finRes.ok || !finalId) return fail(putError || driveErrorMessage(finJson, "Uploaded, but it could not be found in Drive."));
+        evidenceUrl = isAudio ? buildAudioEvidence(finalId) : buildVideoEvidence(finalId, posterFileId);
       } else {
+        flashEv(planId, idx, "Uploading picture…");
         const fd = new FormData();
         fd.append("file", file);
         const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
         if (!res.ok) {
           const errJson = await res.json().catch(() => ({}));
-          return showErr(driveErrorMessage(errJson, "Picture upload failed."));
+          return fail(driveErrorMessage(errJson, "Picture upload failed."));
         }
         const json = await res.json();
-        if (!json.url) return showErr("Picture upload failed.");
+        if (!json.url) return fail("Picture upload failed.");
         evidenceUrl = json.url;
       }
 
       const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: [...(f.evidence || []), evidenceUrl] } : f));
       updateLocal(planId, updated);
       await persist(planId, updated);
+      flashEv(planId, idx, `${kindLabel} added ✓`, true, true);
       showMsg(`${kindLabel} added.`);
     } catch (e: any) {
-      showErr(e?.message || `${kindLabel} upload failed.`);
+      fail(e?.message || `${kindLabel} upload failed.`);
     } finally {
       setUploadPct(null);
       setMessage("");
@@ -862,6 +878,11 @@ y = ey + evThumbMaxH + 8;
                                                         {uploadPct !== null ? `Uploading ${uploadPct}%` : "+ Picture / Video / Voice"}
                                                         <input type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={(e) => { addEvidence(plan.id, i, e.target.files?.[0] || null); e.target.value = ""; }} />
                                                       </label>
+                                                      {evStatus && evStatus.planId === plan.id && evStatus.idx === i && (
+                                                        <span className={`text-[11px] leading-tight ${evStatus.ok ? "text-emerald-300" : "text-red-300"}`}>
+                                                          {evStatus.text}
+                                                        </span>
+                                                      )}
                                                     </div>
                                                   </div>
 
