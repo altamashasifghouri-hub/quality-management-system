@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseFromCookies } from "@/lib/google-oauth";
 
 const SEVERITIES = ["Critical", "High", "Medium", "Low"];
-const MODELS = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-pro-preview"];
+const MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite"];
 
 function normalizeSeverity(v: string) {
   const s = (v || "").toLowerCase();
@@ -373,16 +373,23 @@ export async function POST(req: Request) {
   }
 
   let lastError = "";
+  const startedAt = Date.now();
+  const HARD_LIMIT = 90000;
+  const timeLeft = () => HARD_LIMIT - (Date.now() - startedAt);
   for (let m = 0; m < MODELS.length; m++) {
     if (refcheck && m > 0) break;
+    if (timeLeft() < 3000) { lastError = `${lastError} | generation deadline reached`; break; }
     const model = MODELS[m];
-    const maxAttempts = refcheck ? 1 : m === 0 ? 3 : 1;
-    const ttl = refcheck ? 45000 : 60000;
+    const maxAttempts = refcheck ? 1 : 2;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
+      const left = timeLeft();
+      if (left < 3000) break;
+      const ttl = Math.min(refcheck ? 45000 : 30000, left);
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+      let timedOut = false;
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), ttl);
+        const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ttl);
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
           {
@@ -409,6 +416,7 @@ export async function POST(req: Request) {
       } catch (e: any) {
         lastError = `${model}: ${e?.message || "generation failed"}`;
       }
+      if (timedOut) break;
     }
   }
 
