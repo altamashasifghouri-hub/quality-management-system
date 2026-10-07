@@ -9,7 +9,7 @@ import autoTable from "jspdf-autotable";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { loadPdfImage, imageDims, preloadPdfImages } from "@/lib/pdf-image";
 import { driveErrorMessage } from "@/lib/drive-error";
-import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isVideoEvidence } from "@/lib/evidence";
+import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isMediaEvidence } from "@/lib/evidence";
 import EvidenceThumb from "@/components/EvidenceThumb";
 
 interface Department { id: string; name: string; branch_id: string; }
@@ -631,11 +631,11 @@ export default function InternalAuditReport() {
             for (const url of evs) {
               if (placed > 0 && placed % evPerRow === 0) { ex = margin; ey += evThumbMaxH + 8; }
               if (ey + evThumbMaxH + 6 > maxY) { doc.addPage(); ex = margin; ey = margin; placed = 0; }
-              const isVideo = isVideoEvidence(url);
+              const isMedia = isMediaEvidence(url);
               const linkUrl = evidenceLinkUrl(url);
               let dataUrl = "";
               try { dataUrl = await loadImageData(evidenceDisplayUrl(url)); } catch { dataUrl = ""; }
-              if (!dataUrl && !isVideo) { placed++; continue; }
+              if (!dataUrl && !isMedia) { placed++; continue; }
               let dw = evThumbW;
               let dh = evThumbMaxH;
               if (dataUrl) {

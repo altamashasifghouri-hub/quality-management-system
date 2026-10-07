@@ -24,7 +24,7 @@ async function deleteDriveFileById(id: string) {
 export async function deleteDriveFileByUrl(url: string | null | undefined): Promise<void> {
   const id = driveFileIdFromUrl(url);
   const poster = (url || "").match(/#qms=([A-Za-z0-9_-]+)/);
-  if (poster && poster[1] && poster[1] !== id) await deleteDriveFileById(poster[1]);
+  if (poster && poster[1].length >= 20 && poster[1] !== id) await deleteDriveFileById(poster[1]);
   if (!id) return;
   await deleteDriveFileById(id);
 }

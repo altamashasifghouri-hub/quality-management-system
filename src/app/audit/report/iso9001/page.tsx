@@ -9,7 +9,7 @@ import { driveErrorMessage } from "@/lib/drive-error";
 import { jsPDF } from "jspdf";
 import { loadPdfImage, imageDims } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
-import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isVideoEvidence, putFileToDrive, videoUploadError, captureVideoPoster, buildVideoEvidence } from "@/lib/evidence";
+import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isAudioEvidence, isMediaEvidence, putFileToDrive, mediaUploadError, captureVideoPoster, buildAudioEvidence, buildVideoEvidence } from "@/lib/evidence";
 import EvidenceThumb from "@/components/EvidenceThumb";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; sop?: string; sopClause?: string; }
@@ -288,40 +288,45 @@ export default function Iso9001Report() {
   async function addEvidence(planId: string, idx: number, file: File | null) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan || !file) return;
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) return showErr("Evidence must be an image or a video.");
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/") && !file.type.startsWith("audio/"))
+      return showErr("Evidence must be an image, a video or a voice recording.");
     setError("");
     const isVideo = file.type.startsWith("video/");
+    const isAudio = file.type.startsWith("audio/");
+    const kindLabel = isVideo ? "Video" : isAudio ? "Voice recording" : "Picture";
     try {
       let evidenceUrl = "";
 
-      if (isVideo) {
-        const tooBig = videoUploadError(file);
+      if (isVideo || isAudio) {
+        const tooBig = mediaUploadError(file);
         if (tooBig) return showErr(tooBig);
 
         let posterFileId = "";
-        try {
-          setMessage("Preparing video poster…");
-          const poster = await captureVideoPoster(file);
-          if (poster) {
-            const fd = new FormData();
-            fd.append("file", new File([poster], `${file.name.replace(/\.[^.]+$/, "") || "video"}_poster.jpg`, { type: "image/jpeg" }));
-            const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
-            const json = await res.json().catch(() => ({}));
-            if (res.ok && json.fileId) posterFileId = json.fileId;
+        if (isVideo) {
+          try {
+            setMessage("Preparing video poster…");
+            const poster = await captureVideoPoster(file);
+            if (poster) {
+              const fd = new FormData();
+              fd.append("file", new File([poster], `${file.name.replace(/\.[^.]+$/, "") || "video"}_poster.jpg`, { type: "image/jpeg" }));
+              const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+              const json = await res.json().catch(() => ({}));
+              if (res.ok && json.fileId) posterFileId = json.fileId;
+            }
+          } catch {
+            /* poster optional */
           }
-        } catch {
-          /* poster optional */
         }
 
+        setMessage("");
         const initRes = await fetch("/api/drive-resumable", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "init", name: file.name, mime: file.type, size: file.size, folderKind: "evidence" }),
         });
         const initJson = await initRes.json().catch(() => ({}));
-        if (!initRes.ok || !initJson.uploadUrl) return showErr(driveErrorMessage(initJson, "Could not start the video upload."));
+        if (!initRes.ok || !initJson.uploadUrl) return showErr(driveErrorMessage(initJson, "Could not start the upload."));
 
-        setMessage("");
         setUploadPct(0);
         let uploaded: { id?: string };
         try {
@@ -329,7 +334,7 @@ export default function Iso9001Report() {
         } finally {
           setUploadPct(null);
         }
-        if (!uploaded?.id) return showErr("The video upload did not complete.");
+        if (!uploaded?.id) return showErr("The upload did not complete.");
 
         const finRes = await fetch("/api/drive-resumable", {
           method: "POST",
@@ -337,8 +342,8 @@ export default function Iso9001Report() {
           body: JSON.stringify({ action: "finish", fileId: uploaded.id }),
         });
         const finJson = await finRes.json().catch(() => ({}));
-        if (!finRes.ok) return showErr(driveErrorMessage(finJson, "Video uploaded, but it could not be shared."));
-        evidenceUrl = buildVideoEvidence(uploaded.id, posterFileId);
+        if (!finRes.ok) return showErr(driveErrorMessage(finJson, "Uploaded, but it could not be shared."));
+        evidenceUrl = isAudio ? buildAudioEvidence(uploaded.id) : buildVideoEvidence(uploaded.id, posterFileId);
       } else {
         const fd = new FormData();
         fd.append("file", file);
@@ -355,9 +360,9 @@ export default function Iso9001Report() {
       const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: [...(f.evidence || []), evidenceUrl] } : f));
       updateLocal(planId, updated);
       await persist(planId, updated);
-      showMsg(isVideo ? "Video added." : "Picture added.");
+      showMsg(`${kindLabel} added.`);
     } catch (e: any) {
-      showErr(e?.message || (isVideo ? "Video upload failed." : "Picture upload failed."));
+      showErr(e?.message || `${kindLabel} upload failed.`);
     } finally {
       setUploadPct(null);
       setMessage("");
@@ -523,11 +528,11 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
               for (const url of evs) {
                 if (placed > 0 && placed % evPerRow === 0) { ex = margin; ey += evThumbMaxH + 8; }
                 if (ey + evThumbMaxH + 6 > maxY) { doc.addPage(); ex = margin; ey = margin; placed = 0; }
-                const isVideo = isVideoEvidence(url);
+                const isMedia = isMediaEvidence(url);
                 const linkUrl = evidenceLinkUrl(url);
                 let dataUrl = "";
                 try { dataUrl = await loadImageData(evidenceDisplayUrl(url)); } catch { dataUrl = ""; }
-                if (!dataUrl && !isVideo) { placed++; continue; }
+                if (!dataUrl && !isMedia) { placed++; continue; }
                 let dw = evThumbW;
                 let dh = evThumbMaxH;
                 if (dataUrl) {
@@ -854,8 +859,8 @@ y = ey + evThumbMaxH + 8;
                                                         ))}
                                                       </div>
                                                       <label className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] cursor-pointer text-center">
-                                                        {uploadPct !== null ? `Uploading ${uploadPct}%` : "+ Picture / Video"}
-                                                        <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { addEvidence(plan.id, i, e.target.files?.[0] || null); e.target.value = ""; }} />
+                                                        {uploadPct !== null ? `Uploading ${uploadPct}%` : "+ Picture / Video / Voice"}
+                                                        <input type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={(e) => { addEvidence(plan.id, i, e.target.files?.[0] || null); e.target.value = ""; }} />
                                                       </label>
                                                     </div>
                                                   </div>

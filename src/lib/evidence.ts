@@ -1,5 +1,17 @@
-export function isVideoEvidence(url: string): boolean {
+export function isDriveFileUrl(url: string): boolean {
   return /drive\.google\.com\/file\/d\//.test(url || "");
+}
+
+export function isAudioEvidence(url: string): boolean {
+  return isDriveFileUrl(url) && /#qms=audio(?:$|&)/.test(url || "");
+}
+
+export function isVideoEvidence(url: string): boolean {
+  return isDriveFileUrl(url) && !isAudioEvidence(url);
+}
+
+export function isMediaEvidence(url: string): boolean {
+  return isDriveFileUrl(url);
 }
 
 export function driveFileIdOf(url: string): string {
@@ -19,28 +31,41 @@ export function buildVideoEvidence(videoFileId: string, posterFileId: string): s
   return `https://drive.google.com/file/d/${videoFileId}/view${posterFileId ? `#qms=${posterFileId}` : ""}`;
 }
 
+export function buildAudioEvidence(audioFileId: string): string {
+  return `https://drive.google.com/file/d/${audioFileId}/view#qms=audio`;
+}
+
 export function evidenceDisplayUrl(url: string): string {
+  if (isAudioEvidence(url)) return AUDIO_POSTER;
   if (!isVideoEvidence(url)) return url;
   const poster = videoPosterId(url) || driveFileIdOf(url);
   return poster ? `https://drive.google.com/thumbnail?id=${poster}&sz=w800` : url;
 }
 
 export function evidenceLinkUrl(url: string): string {
-  if (!isVideoEvidence(url)) return url;
+  if (!isMediaEvidence(url)) return url;
   return (url || "").split("#")[0];
 }
 
 export function evidenceCaption(url: string): string {
-  return isVideoEvidence(url) ? "Click to play video" : "Click for full view";
+  if (isAudioEvidence(url)) return "Click to play recording";
+  if (isVideoEvidence(url)) return "Click to play video";
+  return "Click for full view";
 }
 
-const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 500 * 1024 * 1024;
 
-export function videoUploadError(file: File): string {
-  if (!file.type.startsWith("video/")) return "";
-  if (file.size > MAX_VIDEO_BYTES) return "Video must be 500MB or smaller.";
+export function mediaUploadError(file: File): string {
+  if (file.type.startsWith("image/")) return "";
+  if (file.size > MAX_MEDIA_BYTES) return "This file must be 500MB or smaller.";
   return "";
 }
+
+export const AUDIO_POSTER =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="224" height="160"><rect width="100%" height="100%" fill="#0f172a"/><g fill="#38bdf8"><rect x="44" y="70" width="6" height="20" rx="3"/><rect x="56" y="58" width="6" height="44" rx="3"/><rect x="68" y="46" width="6" height="68" rx="3"/><rect x="80" y="62" width="6" height="36" rx="3"/><rect x="92" y="72" width="6" height="16" rx="3"/><rect x="104" y="54" width="6" height="52" rx="3"/><rect x="116" y="40" width="6" height="80" rx="3"/><rect x="128" y="60" width="6" height="40" rx="3"/><rect x="140" y="70" width="6" height="20" rx="3"/><rect x="152" y="64" width="6" height="32" rx="3"/><rect x="164" y="74" width="6" height="12" rx="3"/></g><text x="50%" y="26%" fill="#94a3b8" font-size="16" text-anchor="middle" font-family="sans-serif">VOICE NOTE</text></svg>'
+  );
 
 export const VIDEO_POSTER_FALLBACK =
   "data:image/svg+xml;utf8," +

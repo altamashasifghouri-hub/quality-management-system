@@ -27,9 +27,9 @@ export async function POST(req: Request) {
     const size = Number(body.size || 0);
     const kind = String(body.folderKind || "evidence");
     if (!name) return NextResponse.json({ error: "Missing file name." }, { status: 400 });
-    if (!/^(image|video)\//.test(mime)) return NextResponse.json({ error: "Only images and videos can be uploaded." }, { status: 400 });
+    if (!/^(image|video|audio)\//.test(mime)) return NextResponse.json({ error: "Only images, videos and audio can be uploaded." }, { status: 400 });
     if (!Number.isFinite(size) || size <= 0) return NextResponse.json({ error: "Invalid file size." }, { status: 400 });
-    if (size > MAX_BYTES) return NextResponse.json({ error: "Video must be 500MB or smaller." }, { status: 400 });
+    if (size > MAX_BYTES) return NextResponse.json({ error: "File must be 500MB or smaller." }, { status: 400 });
     const folderId = driveFolderId(kind);
     if (!folderId) return NextResponse.json({ error: "Google Drive folder is not configured." }, { status: 500 });
 
