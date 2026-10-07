@@ -517,18 +517,6 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
               if (y + 4.8 > maxY) { doc.addPage(); y = margin; }
               doc.text(ln, margin, y); y += 4.8;
             }
-            if (f.sop) {
-              doc.setFontSize(9.5);
-              doc.setTextColor(13, 148, 136);
-              doc.setFont("helvetica", "bold");
-              const sLine = `SOP Violated: ${f.sop}${f.sopClause ? ` — ${f.sopClause}` : ""}`;
-              for (const ln of doc.splitTextToSize(sLine, maxWidth)) {
-                if (y + 4.5 > maxY) { doc.addPage(); y = margin; }
-                doc.text(ln, margin, y); y += 4.5;
-              }
-              doc.setFont("helvetica", "normal");
-              doc.setFontSize(10);
-            }
             if (f.recommendation) {
               doc.setTextColor(51, 65, 85);
               for (const ln of doc.splitTextToSize(`Recommendation: ${f.recommendation}`, maxWidth)) {
