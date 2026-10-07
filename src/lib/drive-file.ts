@@ -10,9 +10,7 @@ export function driveFileIdFromUrl(url: string | null | undefined): string | nul
   return null;
 }
 
-export async function deleteDriveFileByUrl(url: string | null | undefined): Promise<void> {
-  const id = driveFileIdFromUrl(url);
-  if (!id) return;
+async function deleteDriveFileById(id: string) {
   try {
     await fetch(`/api/storage?source=drive&fileId=${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -21,4 +19,12 @@ export async function deleteDriveFileByUrl(url: string | null | undefined): Prom
   } catch {
     // best effort — orphaned Drive files can be cleared from the Storage page
   }
+}
+
+export async function deleteDriveFileByUrl(url: string | null | undefined): Promise<void> {
+  const id = driveFileIdFromUrl(url);
+  const poster = (url || "").match(/#qms=([A-Za-z0-9_-]+)/);
+  if (poster && poster[1] && poster[1] !== id) await deleteDriveFileById(poster[1]);
+  if (!id) return;
+  await deleteDriveFileById(id);
 }

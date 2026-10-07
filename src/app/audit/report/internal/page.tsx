@@ -7,8 +7,10 @@ import Navbar from "@/components/Navbar";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
-import { loadPdfImage, imageDims, zoomUrl, preloadPdfImages } from "@/lib/pdf-image";
+import { loadPdfImage, imageDims, preloadPdfImages } from "@/lib/pdf-image";
 import { driveErrorMessage } from "@/lib/drive-error";
+import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isVideoEvidence } from "@/lib/evidence";
+import EvidenceThumb from "@/components/EvidenceThumb";
 
 interface Department { id: string; name: string; branch_id: string; }
 interface Branch { id: string; name: string; branch_manager: string | null; locations: string[] | null; departments: Department[]; }
@@ -420,7 +422,7 @@ export default function InternalAuditReport() {
       const sigUrl = plan?.signature || SIG_DEFAULT;
 
       await preloadPdfImages([
-        ...report.findings.flatMap((f) => f.evidence || []),
+        ...report.findings.flatMap((f) => (f.evidence || []).map(evidenceDisplayUrl)),
         LOGO,
         sigUrl,
       ]);
@@ -629,19 +631,34 @@ export default function InternalAuditReport() {
             for (const url of evs) {
               if (placed > 0 && placed % evPerRow === 0) { ex = margin; ey += evThumbMaxH + 8; }
               if (ey + evThumbMaxH + 6 > maxY) { doc.addPage(); ex = margin; ey = margin; placed = 0; }
+              const isVideo = isVideoEvidence(url);
+              const linkUrl = evidenceLinkUrl(url);
               let dataUrl = "";
-              try { dataUrl = await loadImageData(url); } catch { placed++; continue; }
-              let dw = 1; let dh = 1;
-              try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* skip */ }
-              let w = evThumbW; let h = (evThumbW * dh) / (dw || 1);
+              try { dataUrl = await loadImageData(evidenceDisplayUrl(url)); } catch { dataUrl = ""; }
+              if (!dataUrl && !isVideo) { placed++; continue; }
+              let dw = evThumbW;
+              let dh = evThumbMaxH;
+              if (dataUrl) {
+                try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* keep the default box */ }
+              }
+              let w = evThumbW;
+              let h = (evThumbW * dh) / (dw || 1);
               if (h > evThumbMaxH) { h = evThumbMaxH; w = (h * dw) / (dh || 1); }
+              if (!isFinite(w) || w <= 0 || !isFinite(h) || h <= 0) { w = evThumbW; h = evThumbMaxH; }
               const iy = ey + (evThumbMaxH - h) / 2;
-              doc.addImage(dataUrl, "JPEG", ex, iy, w, h);
+              if (dataUrl) {
+                doc.addImage(dataUrl, "JPEG", ex, iy, w, h);
+              } else {
+                doc.setFillColor(15, 23, 42);
+                doc.rect(ex, iy, w, h, "F");
+                doc.setFillColor(255, 255, 255);
+                doc.triangle(ex + w / 2 - 3, iy + h / 2 - 4, ex + w / 2 - 3, iy + h / 2 + 4, ex + w / 2 + 4, iy + h / 2, "F");
+              }
               doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
               doc.rect(ex, iy, w, h);
-              doc.link(ex, iy, w, h, { url: zoomUrl(url) });
+              doc.link(ex, iy, w, h, { url: linkUrl });
               doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
-              doc.text("Click for full view", ex + w / 2, iy + h + 3, { align: "center" });
+              doc.text(evidenceCaption(url), ex + w / 2, iy + h + 3, { align: "center" });
               ex += evThumbW + evGap;
               placed++;
             }
@@ -936,8 +953,7 @@ export default function InternalAuditReport() {
                             <td className="px-3 py-2">
                               <div className="flex flex-wrap gap-1.5 max-w-[220px]">
                                 {(f.evidence && f.evidence.length > 0) ? f.evidence.map((url, j) => (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <a key={j} href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Evidence" className="w-32 h-24 object-cover rounded border border-white/20 hover:opacity-80" /></a>
+                                  <EvidenceThumb key={j} url={url} className="w-32 h-24 object-cover rounded border border-white/20 hover:opacity-80" />
                                 )) : <span className="text-blue-200/30 text-xs">—</span>}
                               </div>
                             </td>
@@ -1113,10 +1129,7 @@ export default function InternalAuditReport() {
                                 <div className="flex flex-wrap items-center gap-3">
                                   <span className="text-xs text-slate-500 font-medium">Evidence:</span>
                                   {f.evidence.map((url, j) => (
-                                    <a key={j} href={url} target="_blank" rel="noopener noreferrer" className="block">
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img src={url} alt={`Evidence ${j + 1}`} className="h-44 max-w-[340px] object-cover rounded border border-slate-300 shadow-sm hover:opacity-80 transition-opacity" />
-                                    </a>
+                                    <EvidenceThumb key={j} url={url} className="h-44 max-w-[340px] object-cover rounded border border-slate-300 shadow-sm hover:opacity-80 transition-opacity" />
                                   ))}
                                 </div>
                               </td>

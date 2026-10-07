@@ -7,8 +7,10 @@ import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
 import { jsPDF } from "jspdf";
-import { loadPdfImage, imageDims, zoomUrl } from "@/lib/pdf-image";
+import { loadPdfImage, imageDims } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
+import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isVideoEvidence, putFileToDrive, videoUploadError, captureVideoPoster, buildVideoEvidence } from "@/lib/evidence";
+import EvidenceThumb from "@/components/EvidenceThumb";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; sop?: string; sopClause?: string; }
 interface Schedule { id: string; branch_id: string; branch_name?: string; branch_manager?: string | null; date_from: string; date_to: string; departments: string[]; }
@@ -140,6 +142,7 @@ export default function Iso9001Report() {
 
   const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
@@ -285,20 +288,80 @@ export default function Iso9001Report() {
   async function addEvidence(planId: string, idx: number, file: File | null) {
     const plan = plans.find((p) => p.id === planId);
     if (!plan || !file) return;
-    if (!file.type.startsWith("image/")) return showErr("Evidence must be an image.");
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      return showErr(driveErrorMessage(errJson, "Picture upload failed."));
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) return showErr("Evidence must be an image or a video.");
+    setError("");
+    const isVideo = file.type.startsWith("video/");
+    try {
+      let evidenceUrl = "";
+
+      if (isVideo) {
+        const tooBig = videoUploadError(file);
+        if (tooBig) return showErr(tooBig);
+
+        let posterFileId = "";
+        try {
+          setMessage("Preparing video poster…");
+          const poster = await captureVideoPoster(file);
+          if (poster) {
+            const fd = new FormData();
+            fd.append("file", new File([poster], `${file.name.replace(/\.[^.]+$/, "") || "video"}_poster.jpg`, { type: "image/jpeg" }));
+            const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+            const json = await res.json().catch(() => ({}));
+            if (res.ok && json.fileId) posterFileId = json.fileId;
+          }
+        } catch {
+          /* poster optional */
+        }
+
+        const initRes = await fetch("/api/drive-resumable", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "init", name: file.name, mime: file.type, size: file.size, folderKind: "evidence" }),
+        });
+        const initJson = await initRes.json().catch(() => ({}));
+        if (!initRes.ok || !initJson.uploadUrl) return showErr(driveErrorMessage(initJson, "Could not start the video upload."));
+
+        setMessage("");
+        setUploadPct(0);
+        let uploaded: { id?: string };
+        try {
+          uploaded = await putFileToDrive(initJson.uploadUrl, file, file.type, setUploadPct);
+        } finally {
+          setUploadPct(null);
+        }
+        if (!uploaded?.id) return showErr("The video upload did not complete.");
+
+        const finRes = await fetch("/api/drive-resumable", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "finish", fileId: uploaded.id }),
+        });
+        const finJson = await finRes.json().catch(() => ({}));
+        if (!finRes.ok) return showErr(driveErrorMessage(finJson, "Video uploaded, but it could not be shared."));
+        evidenceUrl = buildVideoEvidence(uploaded.id, posterFileId);
+      } else {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          return showErr(driveErrorMessage(errJson, "Picture upload failed."));
+        }
+        const json = await res.json();
+        if (!json.url) return showErr("Picture upload failed.");
+        evidenceUrl = json.url;
+      }
+
+      const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: [...(f.evidence || []), evidenceUrl] } : f));
+      updateLocal(planId, updated);
+      await persist(planId, updated);
+      showMsg(isVideo ? "Video added." : "Picture added.");
+    } catch (e: any) {
+      showErr(e?.message || (isVideo ? "Video upload failed." : "Picture upload failed."));
+    } finally {
+      setUploadPct(null);
+      setMessage("");
     }
-    const json = await res.json();
-    if (!json.url) return showErr("Picture upload failed.");
-    const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: [...(f.evidence || []), json.url] } : f));
-    updateLocal(planId, updated);
-    await persist(planId, updated);
-    showMsg("Picture added.");
   }
 
 async function removeEvidence(planId: string, idx: number, evIdx: number) {
@@ -460,19 +523,34 @@ async function removeEvidence(planId: string, idx: number, evIdx: number) {
               for (const url of evs) {
                 if (placed > 0 && placed % evPerRow === 0) { ex = margin; ey += evThumbMaxH + 8; }
                 if (ey + evThumbMaxH + 6 > maxY) { doc.addPage(); ex = margin; ey = margin; placed = 0; }
+                const isVideo = isVideoEvidence(url);
+                const linkUrl = evidenceLinkUrl(url);
                 let dataUrl = "";
-                try { dataUrl = await loadImageData(url); } catch { placed++; continue; }
-                let dw = 1; let dh = 1;
-                try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* skip */ }
-                let w = evThumbW; let h = (evThumbW * dh) / (dw || 1);
+                try { dataUrl = await loadImageData(evidenceDisplayUrl(url)); } catch { dataUrl = ""; }
+                if (!dataUrl && !isVideo) { placed++; continue; }
+                let dw = evThumbW;
+                let dh = evThumbMaxH;
+                if (dataUrl) {
+                  try { const dims = await imageDims(dataUrl); dw = dims.width; dh = dims.height; } catch { /* keep the default box */ }
+                }
+                let w = evThumbW;
+                let h = (evThumbW * dh) / (dw || 1);
                 if (h > evThumbMaxH) { h = evThumbMaxH; w = (h * dw) / (dh || 1); }
+                if (!isFinite(w) || w <= 0 || !isFinite(h) || h <= 0) { w = evThumbW; h = evThumbMaxH; }
                 const iy = ey + (evThumbMaxH - h) / 2;
-                doc.addImage(dataUrl, "JPEG", ex, iy, w, h);
+                if (dataUrl) {
+                  doc.addImage(dataUrl, "JPEG", ex, iy, w, h);
+                } else {
+                  doc.setFillColor(15, 23, 42);
+                  doc.rect(ex, iy, w, h, "F");
+                  doc.setFillColor(255, 255, 255);
+                  doc.triangle(ex + w / 2 - 3, iy + h / 2 - 4, ex + w / 2 - 3, iy + h / 2 + 4, ex + w / 2 + 4, iy + h / 2, "F");
+                }
                 doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.2);
                 doc.rect(ex, iy, w, h);
-                doc.link(ex, iy, w, h, { url: zoomUrl(url) });
+                doc.link(ex, iy, w, h, { url: linkUrl });
                 doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
-                doc.text("Click for full view", ex + w / 2, iy + h + 3, { align: "center" });
+                doc.text(evidenceCaption(url), ex + w / 2, iy + h + 3, { align: "center" });
                 ex += evThumbW + evGap;
                 placed++;
               }
@@ -764,8 +842,7 @@ y = ey + evThumbMaxH + 8;
                                                       <div className="flex flex-wrap gap-2">
                                                         {(f.evidence || []).map((url, j) => (
                                                           <div key={j} className="relative group">
-                                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                            <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Evidence ${j + 1}`} className="w-56 h-40 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" /></a>
+                                                            <EvidenceThumb url={url} className="w-56 h-40 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity" />
                                                             <button
                                                               type="button"
                                                               onClick={() => removeEvidence(plan.id, i, j)}
@@ -777,8 +854,8 @@ y = ey + evThumbMaxH + 8;
                                                         ))}
                                                       </div>
                                                       <label className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] cursor-pointer text-center">
-                                                        + Picture
-                                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { addEvidence(plan.id, i, e.target.files?.[0] || null); e.target.value = ""; }} />
+                                                        {uploadPct !== null ? `Uploading ${uploadPct}%` : "+ Picture / Video"}
+                                                        <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { addEvidence(plan.id, i, e.target.files?.[0] || null); e.target.value = ""; }} />
                                                       </label>
                                                     </div>
                                                   </div>
