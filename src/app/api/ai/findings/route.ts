@@ -280,6 +280,12 @@ export async function POST(req: Request) {
   }
   if (departments.length === 0) departments = ["General"];
 
+  const noteLines = (() => {
+    const linesAll = notes.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const numbered = linesAll.filter((l) => /^\s*\d+(?:\.\d+)*/.test(l)).length;
+    return numbered > 0 ? numbered : linesAll.length;
+  })();
+
   const apiKey = process.env.GEMINI_API_KEY;
   const policySections = policyText ? parsePolicySections(policyText) : [];
   const clauseBlock = clauses.length
@@ -350,6 +356,7 @@ export async function POST(req: Request) {
     `Hotel/Branch: ${branchName || "Not provided"}`,
     `Audit: ${planTitle || "Internal Audit"}`,
     `Audited departments: ${departments.join(", ")}`,
+    `Expected number of findings: ${noteLines}. Return EXACTLY one finding per note line, in the same order as the notes. Never merge two notes into a single finding; never drop or skip a note that contains an observation.`,
     ``,
     `Raw audit notes:`,
     notes,
@@ -397,7 +404,7 @@ export async function POST(req: Request) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               contents: [{ role: "user", parts: [{ text: promptText }] }],
-              generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+              generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
             }),
             signal: controller.signal,
           }
@@ -411,7 +418,13 @@ export async function POST(req: Request) {
         const json = await res.json();
         const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("") || "";
         const findings = parseFindings(text, clauses);
-        if (findings) return NextResponse.json({ findings: mergeResults(findings, existing, refcheck), source: "generated" });
+        if (findings) {
+          if (!refcheck && noteLines > 0 && findings.length !== noteLines) {
+            lastError = `${model}: returned ${findings.length} findings, expected ${noteLines}`;
+            continue;
+          }
+          return NextResponse.json({ findings: mergeResults(findings, existing, refcheck), source: "generated" });
+        }
         lastError = `${model}: could not parse model output`;
       } catch (e: any) {
         lastError = `${model}: ${e?.message || "generation failed"}`;

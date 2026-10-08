@@ -147,25 +147,33 @@ export default function InternalRecords() {
         await supabase.from("audit_sessions").update({ status: "closed", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", session.id);
       }
       const { data: existing } = await supabase
-        .from("audit_sessions").select("id").eq("plan_id", pid)
+        .from("audit_sessions").select("id, notepad, policy_text, policy_file, policy_file_url").eq("plan_id", pid)
         .order("updated_at", { ascending: false }).limit(1).maybeSingle();
       let sessId: string;
+      let resumeNotepad = "";
+      let resumePolicy = { text: "", file: "", url: "" };
       if (existing) {
         sessId = existing.id as string;
         const { error: err2 } = await supabase
           .from("audit_sessions")
-          .update({ status: "active", notepad: "", closed_at: null, started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .update({ status: "active", started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq("id", sessId);
         if (err2) return showErr(err2.message);
+        resumeNotepad = (existing as any).notepad || "";
+        resumePolicy = {
+          text: (existing as any).policy_text || "",
+          file: (existing as any).policy_file || "",
+          url: (existing as any).policy_file_url || "",
+        };
       } else {
         const { data, error: err2 } = await supabase
           .from("audit_sessions").insert({ plan_id: pid, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" }).select("id").single();
         if (err2) return showErr(err2.message);
         sessId = data?.id as string;
       }
-      setSession({ id: sessId, plan_id: pid, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" });
-      setNotepad("");
-      setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
+      setSession({ id: sessId, plan_id: pid, notepad: resumeNotepad, status: "active", policy_text: resumePolicy.text, policy_file: resumePolicy.file, policy_file_url: resumePolicy.url });
+      setNotepad(resumeNotepad);
+      setPolicyText(resumePolicy.text); setPolicyFileName(resumePolicy.file); setPolicyChars(resumePolicy.text.trim().length); setPolicyDriveUrl(resumePolicy.url);
       setSelectedPlanId("");
       if (successMsg) showMsg(successMsg);
       setStarting(false);
@@ -327,9 +335,10 @@ export default function InternalRecords() {
     }
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(replace = false) {
     if (!session || !sessionPlan) return;
     if (!notepad.trim()) return showErr("Write your audit notes in the notepad first.");
+    if (replace && sessionPlan.findings.length && !confirm(`Replace the current ${sessionPlan.findings.length} finding(s) with newly generated ones?`)) return;
     setGenerating(true);
     setError("");
     setLastGenerate(null);
@@ -348,7 +357,7 @@ export default function InternalRecords() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) return showErr(json?.error || "Generation failed. Try again.");
       const incoming: Finding[] = json.findings || [];
-      const current: Finding[] = sessionPlan.findings || [];
+      const current: Finding[] = replace ? [] : (sessionPlan.findings || []);
       const existingKey = new Set(current.map((f) => `${(f.department || "").toLowerCase()}|${(f.detail || "").trim().toLowerCase()}`));
       const merged = [...current];
       incoming.forEach((f) => {
@@ -527,9 +536,14 @@ export default function InternalRecords() {
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
-              <button onClick={handleGenerate} disabled={generating} className="px-5 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+              <button onClick={() => handleGenerate(false)} disabled={generating} className="px-5 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
                 {generating ? "Generating..." : "Generate Findings"}
               </button>
+              {sessionPlan.findings.length > 0 && (
+                <button onClick={() => handleGenerate(true)} disabled={generating} className="px-5 py-2.5 rounded-lg bg-amber-600/80 hover:bg-amber-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                  {generating ? "Working..." : `Regenerate — replace all findings (${sessionPlan.findings.length})`}
+                </button>
+              )}
               <Link href="/audit/findings" className="text-sm text-blue-400 hover:text-blue-300 transition-colors">→ See the Findings section</Link>
             </div>
             {lastGenerate && (
