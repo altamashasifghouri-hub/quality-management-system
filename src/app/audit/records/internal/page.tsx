@@ -490,9 +490,9 @@ export default function InternalRecords() {
                 <label className={labelCls}>Audit Plan *</label>
                 <select value={selectedPlanId} onChange={(e) => setSelectedPlanId(e.target.value)} className={selectCls}>
                   <option value="">Select an audit plan</option>
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id} className="bg-slate-800">{p.branch_name} — {p.title}</option>
-                  ))}
+{plans.map((p) => (
+                      <option key={p.id} value={p.id} className="bg-slate-800">{p.branch_name} - {p.title}{planScheduleSummary(p) ? ` (${planScheduleSummary(p)})` : ""}</option>
+                    ))}
                 </select>
                 <p className="text-xs text-blue-200/40 mt-1">The branch, dates and departments are fetched automatically from the plan.</p>
               </div>

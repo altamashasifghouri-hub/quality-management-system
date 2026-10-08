@@ -233,7 +233,7 @@ export default function Iso9001Records() {
                   {plans.map((p) => {
                     const sched = schedules.find((s) => s.id === p.schedule_id);
                     return (
-                      <option key={p.id} value={p.id} className="bg-slate-800">{sched?.branch_name || "Unassigned"} — {p.title} ({p.findings.length} find{p.findings.length !== 1 ? "ings" : "ing"})</option>
+                      <option key={p.id} value={p.id} className="bg-slate-800">{sched?.branch_name || "Unassigned"} — {p.title}{sched ? ` (${sched.date_from} → ${sched.date_to})` : ""} · {p.findings.length} find{p.findings.length !== 1 ? "ings" : "ing"}</option>
                     );
                   })}
                 </select>

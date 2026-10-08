@@ -805,11 +805,15 @@ export default function InternalAuditReport() {
               <label className={labelCls}>Internal Audit Plan *</label>
               <select value={form.audit_id} onChange={(e) => onPlanChange(e.target.value)} className={selectCls}>
                 <option value="">Select an audit plan</option>
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-slate-800">
-                    {p.branch_name} — {p.title} ({p.findings.length} finding{p.findings.length !== 1 ? "s" : ""})
-                  </option>
-                ))}
+                {plans.map((p) => {
+                  const sched = schedules.find((sc) => sc.id === p.schedule_id);
+                  const when = sched ? `${sched.date_from} → ${sched.date_to}` : "";
+                  return (
+                    <option key={p.id} value={p.id} className="bg-slate-800">
+                      {p.branch_name} — {p.title}{when ? ` (${when})` : ""} · {p.findings.length} finding{p.findings.length !== 1 ? "s" : ""}
+                    </option>
+                  );
+                })}
               </select>
               {plans.length === 0 && <p className="text-xs text-amber-300/70 mt-1">No audit plans yet. Create an Internal Audit Plan first.</p>}
               {form.audit_id && editingReportId && <p className="text-xs text-amber-300/70 mt-1">A report already exists for this plan — editing it.</p>}

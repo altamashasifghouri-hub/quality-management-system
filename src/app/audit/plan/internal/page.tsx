@@ -192,15 +192,26 @@ export default function InternalAuditPlan() {
   }, []);
 
   const selBranch = branches.find((b) => b.id === form.branch_id);
-  const editingSchedId = editingPlan ? (plans.find((p) => p.id === editingPlan)?.schedule_id || null) : null;
-  const occupiedScheduleIds = new Set<string>();
-  const occupiedBy = new Map<string, string>();
-  plans.forEach((p) => { if (p.schedule_id && p.id !== editingPlan) { occupiedScheduleIds.add(p.schedule_id); occupiedBy.set(p.schedule_id, "Internal Plan"); } });
-  usedIsoScheds.forEach((id) => { if (id && id !== editingSchedId) { occupiedScheduleIds.add(id); occupiedBy.set(id, "ISO 9001 Plan"); } });
+  const auditsBySched = new Map<string, number>();
+  plans.forEach((p) => { if (p.schedule_id && p.id !== editingPlan) auditsBySched.set(p.schedule_id, (auditsBySched.get(p.schedule_id) || 0) + 1); });
+  const isoBySched = new Set<string>();
+  usedIsoScheds.forEach((id) => { if (id) isoBySched.add(id); });
+  function schedBadge(sid: string) {
+    const n = auditsBySched.get(sid) || 0;
+    const iso = isoBySched.has(sid);
+    const total = n + (iso ? 1 : 0);
+    if (!total) return null;
+    return {
+      label: total === 1 ? (n === 0 ? "ISO 9001 audit" : "Audited") : `${total} audits`,
+      total,
+      cls: n === 0 ? "bg-orange-500/20 border-orange-500/40 text-orange-200" : "bg-purple-500/20 border-purple-500/40 text-purple-200",
+    };
+  }
   const branchSchedules = form.branch_id
     ? schedules.filter((s) => s.branch_id === form.branch_id)
     : [];
   const selSchedule = form.schedule_id ? schedules.find((s) => s.id === form.schedule_id) : null;
+  const selBadge = selSchedule ? schedBadge(selSchedule.id) : null;
 
   function setF(patch: Partial<PlanForm>) { setForm((prev) => ({ ...prev, ...patch })); }
 
@@ -243,7 +254,6 @@ export default function InternalAuditPlan() {
     if (!form.title.trim()) return showErr("Enter an Audit Title.");
     if (!form.branch_id) return showErr("Select a Branch.");
     if (!form.schedule_id) return showErr("An audit must be scheduled in the calendar first. Select a schedule.");
-    if (occupiedScheduleIds.has(form.schedule_id)) return showErr("That schedule already has an audit plan (Internal or ISO 9001) — only one plan per schedule.");
     if (form.departments.length === 0) return showErr("Select at least one department.");
     if (!form.prepared_by.trim()) return showErr("Enter Prepared by.");
     if (!form.date_of_plan) return showErr("Enter Date of Plan.");
@@ -307,6 +317,27 @@ export default function InternalAuditPlan() {
       program, signature: plan.signature || "",
     });
     setEditingPlan(plan.id); setViewingPlan(null); setShowForm(true);
+  }
+
+  function reAudit(plan: InternalAudit) {
+    const branch = branches.find((b) => b.id === plan.branch_id);
+    const program: Record<string, string> = {};
+    plan.program.forEach((row) => { program[row.department] = row.duration; });
+    setForm({
+      title: plan.title, document_number: branch ? genDocNumber(branch.name, plans.length) : "",
+      branch_id: plan.branch_id, schedule_id: plan.schedule_id || "",
+      audit_period: plan.audit_period || "", plan_version: plan.plan_version || "",
+      prepared_by: plan.prepared_by || "", date_of_plan: todayStr(),
+      number_of_employees: plan.number_of_employees != null ? String(plan.number_of_employees) : "",
+      purpose: plan.purpose || "", period_covered: plan.period_covered || "",
+      locations_covered: plan.locations_covered || "", exclusions: plan.exclusions || "",
+      team: plan.audit_team || "", departments: plan.departments,
+      approach: plan.approach.length ? plan.approach : [...APPROACH_ITEMS],
+      program, signature: plan.signature || "",
+    });
+    setEditingPlan(null); setViewingPlan(null); setShowForm(true);
+    showMsg("New audit started for the same schedule. Save it to record this run separately.");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const viewPlan = viewingPlan ? plans.find((p) => p.id === viewingPlan) : null;
@@ -606,23 +637,24 @@ export default function InternalAuditPlan() {
                       <p className="px-3 py-2 text-xs text-blue-200/50">No schedules for this branch yet.</p>
                     )}
                     {branchSchedules.map((s) => {
-                      const occ = occupiedBy.get(s.id);
+                      const badge = schedBadge(s.id);
                       const sel = form.schedule_id === s.id;
+                      const pick = () => { onScheduleChange(s.id); setScheduleOpen(false); };
                       return (
                         <div
                           key={s.id}
                           role="button"
                           tabIndex={0}
-                          onClick={() => { if (!occ) { onScheduleChange(s.id); setScheduleOpen(false); } }}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !occ) { onScheduleChange(s.id); setScheduleOpen(false); } }}
-                          className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 ${occ ? "opacity-50 cursor-not-allowed" : sel ? "bg-blue-600/30 cursor-pointer" : "hover:bg-white/10 cursor-pointer"}`}
+                          onClick={pick}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } }}
+                          className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 cursor-pointer ${sel ? "bg-blue-600/30" : "hover:bg-white/10"}`}
                         >
                           <span className="truncate">
                             {s.date_from} → {s.date_to}{s.departments?.length ? ` (${s.departments.length} dept)` : ""}
                           </span>
-                          {occ ? (
-                            <span className={`shrink-0 px-2 py-0.5 text-[10px] rounded-full border ${occ === "ISO 9001 Plan" ? "bg-orange-500/20 border-orange-500/40 text-orange-200" : "bg-purple-500/20 border-purple-500/40 text-purple-200"}`}>
-                              {occ}
+                          {badge ? (
+                            <span className={`shrink-0 px-2 py-0.5 text-[10px] rounded-full border ${badge.cls}`}>
+                              {badge.label} — pick to audit again
                             </span>
                           ) : sel ? (
                             <span className="shrink-0 text-[10px] text-blue-300">Selected</span>
@@ -636,6 +668,11 @@ export default function InternalAuditPlan() {
               {!form.branch_id && <p className="text-xs text-blue-200/40 mt-1">Select a branch first to see its scheduled audits.</p>}
               {form.branch_id && branchSchedules.length === 0 && (
                 <p className="text-xs text-amber-300/70 mt-1">No schedules for this branch. Go to Audit Schedule to schedule it on the calendar first.</p>
+              )}
+              {selBadge && selBadge.total > 0 && (
+                <p className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mt-2">
+                  Repeat audit — {selBadge.total} audit{selBadge.total > 1 ? "s" : ""} already on record for this schedule. Saving creates another separate audit with its own findings, AI session and report.
+                </p>
               )}
             </div>
 
@@ -777,6 +814,7 @@ export default function InternalAuditPlan() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-blue-200/50">{plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""}</span>
+                    <button onClick={() => reAudit(plan)} className="px-3 py-1.5 text-xs rounded-lg bg-purple-600/90 hover:bg-purple-500 text-white" title="Start another audit on this same schedule">Re-audit</button>
                     <button onClick={() => { setViewingPlan(plan.id); setEditingPlan(null); }} className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-500 text-white">Open</button>
                   </div>
                 </div>
@@ -798,7 +836,8 @@ export default function InternalAuditPlan() {
                     View Saved PDF
                   </a>
                 )}
-                <button onClick={() => startEdit(viewPlan)} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Edit</button>
+                <button onClick={() => reAudit(viewPlan)} className="px-4 py-2 rounded-lg bg-purple-600/90 hover:bg-purple-500 text-white text-sm font-medium">Run audit again</button>
+              <button onClick={() => startEdit(viewPlan)} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium">Edit</button>
                 <button onClick={() => { if (confirm("Delete plan?")) handleDelete(viewPlan.id); }} className="px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium">Delete</button>
                 <button onClick={() => setViewingPlan(null)} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium">Close</button>
               </div>

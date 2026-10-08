@@ -167,7 +167,7 @@ export default function AuditPlanPage() {
   const scheduleMap = Object.fromEntries(schedules.map((s) => [s.id, s]));
   const plansWithPlan = new Set(plans.map((p) => p.schedule_id).filter(Boolean));
   usedInternalScheds.forEach((id) => plansWithPlan.add(id));
-  const availableSchedules = schedules.filter((s) => !plansWithPlan.has(s.id));
+  const availableSchedules = schedules;
   const selectedSched = selectedSchedule ? scheduleMap[selectedSchedule] : null;
 
   async function handleCreatePlan(e: React.FormEvent) {
@@ -577,8 +577,13 @@ export default function AuditPlanPage() {
               <label className="block text-sm text-blue-200/70 mb-1">Select Branch Schedule</label>
               <select value={selectedSchedule || ""} onChange={(e) => onSchedulePicked(e.target.value)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
                 <option value="" className="bg-slate-800">Choose a branch schedule...</option>
-                {availableSchedules.map((s) => (<option key={s.id} value={s.id} className="bg-slate-800">{s.branch_name} ({s.date_from} → {s.date_to})</option>))}
+                {availableSchedules.map((s) => (<option key={s.id} value={s.id} className="bg-slate-800">{s.branch_name} ({s.date_from} → {s.date_to}){plansWithPlan.has(s.id) ? " — already audited, pick to audit again" : ""}</option>))}
               </select>
+              {selectedSched && plansWithPlan.has(selectedSched.id) && (
+                <p className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mt-2">
+                  Repeat audit — this schedule already has an audit on record. Saving creates another separate ISO 9001 plan with its own checklist, findings and report.
+                </p>
+              )}
               {selectedSched && selectedSched.departments.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {selectedSched.departments.map((d, i) => (<span key={i} className="px-2 py-1 text-xs bg-blue-500/20 text-blue-300 rounded-full">{d}</span>))}

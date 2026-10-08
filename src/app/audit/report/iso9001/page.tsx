@@ -680,9 +680,12 @@ y = ey + evThumbMaxH + 8;
                 <label className={labelCls}>ISO 9001 Audit Plan</label>
                 <select value={selectedPlanId} onChange={(e) => onPlanChange(e.target.value)} className={selectCls}>
                   <option value="">Select an audit plan</option>
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id} className="bg-slate-800">{p.branch_name || "Unassigned"} — {p.title} ({p.findings.length} finding{p.findings.length !== 1 ? "s" : ""})</option>
-                  ))}
+                  {plans.map((p) => {
+                    const sched = schedules.find((s) => s.id === p.schedule_id);
+                    return (
+                      <option key={p.id} value={p.id} className="bg-slate-800">{p.branch_name || "Unassigned"} — {p.title}{sched ? ` (${sched.date_from} → ${sched.date_to})` : ""} · {p.findings.length} finding{p.findings.length !== 1 ? "s" : ""}</option>
+                    );
+                  })}
                 </select>
                 {plans.length === 0 && <p className="text-xs text-amber-300/70 mt-1">No ISO 9001 audit plans yet. Create one from Audit Plan → ISO 9001 first.</p>}
               </div>
