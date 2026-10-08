@@ -22,6 +22,15 @@ interface AuditPlan {
   date_of_plan: string | null;
   purpose: string | null;
   document_number: string | null;
+  audit_team: string | null;
+  number_of_employees: number | null;
+  period_covered: string | null;
+  locations_covered: string | null;
+  exclusions: string | null;
+  approach: string[];
+  program: { department: string; duration: string }[];
+  signature: string | null;
+  status: string;
 }
 interface Session {
   id: string;
@@ -51,6 +60,7 @@ export default function InternalRecords() {
   const [starting, setStarting] = useState(false);
   const [closing, setClosing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [cloning, setCloning] = useState<string | null>(null);
   const [lastGenerate, setLastGenerate] = useState<{ count: number; source: string } | null>(null);
 
   const [policyText, setPolicyText] = useState("");
@@ -66,6 +76,10 @@ export default function InternalRecords() {
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 4000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 5000); }
   function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+  function genDocNumber(branchName: string, count: number) {
+    const code = (branchName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "QMS");
+    return `QMS/IA/${new Date().getFullYear()}/${code}-${String(count + 1).padStart(3, "0")}`;
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -84,6 +98,10 @@ export default function InternalRecords() {
       schedule_id: p.schedule_id, departments: p.departments || [], findings: p.findings || [],
       audit_period: p.audit_period, plan_version: p.plan_version, prepared_by: p.prepared_by,
       date_of_plan: p.date_of_plan, purpose: p.purpose, document_number: p.document_number,
+      audit_team: p.audit_team || null, number_of_employees: p.number_of_employees ?? null,
+      period_covered: p.period_covered || null, locations_covered: p.locations_covered || null, exclusions: p.exclusions || null,
+      approach: p.approach || [], program: p.program || [], signature: p.signature || null,
+      status: p.status || "Draft",
     })));
     if (sessionData) {
       setSession({
@@ -114,13 +132,12 @@ export default function InternalRecords() {
     return s ? `${s.date_from} → ${s.date_to}` : plan.audit_period || "";
   }
 
-  async function handleStartAudit() {
-    if (!selectedPlan) return;
+  async function openSession(pid: string, successMsg?: string) {
     setStarting(true);
     setError("");
     try {
-      if (session && session.plan_id === selectedPlan.id) {
-        setSession({ ...session, plan_id: selectedPlan.id });
+      if (session && session.plan_id === pid) {
+        setSession({ ...session, plan_id: pid });
         setNotepad(session.notepad || "");
         showMsg("Audit resumed.");
         setStarting(false);
@@ -130,7 +147,7 @@ export default function InternalRecords() {
         await supabase.from("audit_sessions").update({ status: "closed", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", session.id);
       }
       const { data: existing } = await supabase
-        .from("audit_sessions").select("id").eq("plan_id", selectedPlan.id)
+        .from("audit_sessions").select("id").eq("plan_id", pid)
         .order("updated_at", { ascending: false }).limit(1).maybeSingle();
       let sessId: string;
       if (existing) {
@@ -142,19 +159,58 @@ export default function InternalRecords() {
         if (err2) return showErr(err2.message);
       } else {
         const { data, error: err2 } = await supabase
-          .from("audit_sessions").insert({ plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" }).select("id").single();
+          .from("audit_sessions").insert({ plan_id: pid, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" }).select("id").single();
         if (err2) return showErr(err2.message);
         sessId = data?.id as string;
       }
-      setSession({ id: sessId, plan_id: selectedPlan.id, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" });
+      setSession({ id: sessId, plan_id: pid, notepad: "", status: "active", policy_text: "", policy_file: "", policy_file_url: "" });
       setNotepad("");
       setPolicyText(""); setPolicyFileName(""); setPolicyChars(0); setPolicyDriveUrl("");
       setSelectedPlanId("");
-      showMsg("Audit started. Everything you write here is auto-saved — close it only when you are done.");
+      if (successMsg) showMsg(successMsg);
       setStarting(false);
     } catch (e: any) {
       setStarting(false);
       showErr(e?.message || "Could not start audit.");
+    }
+  }
+
+  async function handleStartAudit() {
+    if (!selectedPlan) return;
+    await openSession(selectedPlan.id, "Audit started. Everything you write here is auto-saved — close it only when you are done.");
+  }
+
+  async function startNextAudit(plan: AuditPlan) {
+    if (!plan.schedule_id) return;
+    if (!confirm(`Create the next audit for ${plan.branch_name || "this branch"} on the same "${planScheduleSummary(plan) || "dates"}" schedule and open it for recording?`)) return;
+    setCloning(plan.id);
+    setError("");
+    try {
+      const round = plans.filter((p) => p.schedule_id === plan.schedule_id).length + 1;
+      const nextDoc = plan.branch_name ? genDocNumber(plan.branch_name, plans.length) : null;
+      const { data, error: insErr } = await supabase.from("internal_audits").insert({
+        title: `${plan.title} (Round ${round})`,
+        document_number: nextDoc,
+        branch_id: plan.branch_id, schedule_id: plan.schedule_id,
+        departments: plan.departments, audit_team: plan.audit_team,
+        audit_period: plan.audit_period, plan_version: plan.plan_version,
+        prepared_by: plan.prepared_by, date_of_plan: todayStr(),
+        number_of_employees: plan.number_of_employees, purpose: plan.purpose,
+        period_covered: plan.period_covered, locations_covered: plan.locations_covered,
+        exclusions: plan.exclusions, approach: plan.approach, program: plan.program,
+        signature: plan.signature, findings: [], status: "Draft",
+      }).select("id").single();
+      if (insErr) return showErr(insErr.message);
+      const newId = (data?.id as string) || "";
+      setPlans((prev) => [{
+        ...plan, id: newId, title: `${plan.title} (Round ${round})`,
+        findings: [], date_of_plan: todayStr(), document_number: nextDoc, status: "Draft",
+      }, ...prev]);
+      await openSession(newId, `Next audit created (Round ${round}) and opened. Write your notes, then click Generate Findings.`);
+    } catch (e: any) {
+      showErr(e?.message || "Could not create the next audit.");
+    } finally {
+      setCloning(null);
     }
   }
 
@@ -483,6 +539,7 @@ export default function InternalRecords() {
             )}
           </div>
         ) : (
+          <>
           <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 space-y-5">
             <h2 className="text-xl font-bold text-white">Start an Audit</h2>
 
@@ -529,6 +586,47 @@ export default function InternalRecords() {
               {!selectedPlan && <p className="text-xs text-blue-200/40 self-center">Select an audit plan to start.</p>}
             </div>
           </div>
+
+          {plans.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-xl font-bold text-white mb-1">Audit rounds</h2>
+              <p className="text-sm text-blue-200/50 mb-4">A round is counted once its findings are saved. Recorded rounds unlock the next one on the same schedule dates.</p>
+              <div className="space-y-3">
+                {plans.map((plan) => {
+                  const recorded = plan.findings.length > 0;
+                  const runnable = recorded && !!plan.schedule_id;
+                  const when = planScheduleSummary(plan);
+                  return (
+                    <div key={plan.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-semibold text-white">{plan.title}</h3>
+                          <span className="text-xs text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded-full">{plan.branch_name || "—"}</span>
+                          {when && <span className="text-xs text-blue-200/70 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">{when}</span>}
+                          {recorded && <span className="text-xs text-green-300 bg-green-500/20 px-2 py-0.5 rounded-full">Recorded</span>}
+                        </div>
+                        <p className="text-xs text-blue-200/40 mt-1">
+                          {plan.document_number && <span>{plan.document_number} · </span>}
+                          {plan.findings.length} finding{plan.findings.length !== 1 ? "s" : ""} recorded
+                        </p>
+                      </div>
+                      {runnable ? (
+                        <div className="text-right">
+                          <button onClick={() => startNextAudit(plan)} disabled={cloning === plan.id} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors disabled:opacity-50">
+                            {cloning === plan.id ? "Creating..." : "Generate findings for next round"}
+                          </button>
+                          <p className="text-xs text-blue-200/40 mt-1">Creates the next audit on the same dates and opens recording.</p>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-blue-200/40">{recorded ? "No schedule linked — add one to run again." : "Record this audit first to unlock the next round."}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          </>
         )}
       </main>
     </div>
