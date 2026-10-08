@@ -601,6 +601,12 @@ y = ey + evThumbMaxH + 8;
         doc.addImage(dataUrl, "JPEG", margin + 20, y - 8, 45, 22);
       } catch { /* signature image unavailable */ }
 
+      y += 28;
+      if (y > maxY - 10) { doc.addPage(); y = margin; }
+      doc.setFontSize(9.5); doc.setTextColor(51, 65, 85); doc.setFont("helvetica", "italic");
+      doc.text("Submitted to CEO — this report is submitted to the CEO only.", margin, y);
+      doc.setFont("helvetica", "normal");
+
       const filename = `${sanitizeFile(branchName)}_ISO_Audit_Report.pdf`;
       doc.save(filename);
 

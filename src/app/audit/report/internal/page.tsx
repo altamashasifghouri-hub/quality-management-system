@@ -694,13 +694,18 @@ export default function InternalAuditReport() {
         head: [["Role", "Name"]],
         body: [
           ["CEO", ceo],
-          ["HR", settingsRow?.hr_name || "—"],
         ],
         styles: { fontSize: 9, cellPadding: 2.5 },
         headStyles: { fillColor: [29, 78, 216] },
         columnStyles: { 0: { fontStyle: "bold", cellWidth: 55 } },
       });
-      y = (doc as any).lastAutoTable.finalY + 16;
+      y = (doc as any).lastAutoTable.finalY + 8;
+      doc.setFontSize(9.5);
+      doc.setTextColor(51, 65, 85);
+      doc.setFont("helvetica", "italic");
+      doc.text("Submitted to CEO — this report is submitted to the CEO only.", margin, y);
+      doc.setFont("helvetica", "normal");
+      y += 8;
 
       if (y > maxY - 40) { doc.addPage(); y = margin; }
       doc.setFontSize(10); doc.setTextColor(51, 65, 85);
@@ -1184,12 +1189,9 @@ export default function InternalAuditReport() {
                       <td className="border border-slate-300 px-3 py-1.5 font-medium">CEO</td>
                       <td className="border border-slate-300 px-3 py-1.5">{settingsRow?.ceo_name || "Hassan Ateeq"}</td>
                     </tr>
-                    <tr className="odd:bg-slate-100">
-                      <td className="border border-slate-300 px-3 py-1.5 font-medium">HR</td>
-                      <td className="border border-slate-300 px-3 py-1.5">{settingsRow?.hr_name || "—"}</td>
-                    </tr>
                   </tbody>
                 </table>
+                <p className="text-xs text-slate-500 italic mt-3">Submitted to CEO — this report is submitted to the CEO only.</p>
               </DocSection>
 
               <div className="mt-10 border-t border-slate-200 pt-8 flex items-end justify-between">
