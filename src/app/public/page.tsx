@@ -1,43 +1,76 @@
 import Link from "next/link";
 import QmsBrand from "@/components/QmsBrand";
-import PublicCapaTree, { PublicPlan } from "@/components/PublicCapaTree";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type Plan = PublicPlan & {
-  status?: string;
-  pdf_url?: string;
+type Summary = { Critical: number; High: number; Medium: number; Low: number };
+
+function computeSummary(findings: any[]): Summary {
+  const s: Summary = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  findings.forEach((f: any) => {
+    const k: keyof Summary = f?.type;
+    if (k === "Critical" || k === "High" || k === "Medium" || k === "Low") s[k] += 1;
+  });
+  return s;
+}
+
+const SEV_STYLES: Record<string, string> = {
+  Critical: "bg-red-500/15 border-red-500/40 text-red-300",
+  High: "bg-orange-500/15 border-orange-500/40 text-orange-300",
+  Medium: "bg-amber-500/15 border-amber-500/40 text-amber-300",
+  Low: "bg-sky-500/15 border-sky-500/40 text-sky-300",
 };
+
+const VISIT_STATUS: Record<string, string> = {
+  Closed: "bg-slate-500/20 text-slate-300",
+  "In Progress": "bg-amber-500/20 text-amber-300",
+  Open: "bg-emerald-500/20 text-emerald-300",
+};
+
+const formatDate = (d?: string | null) =>
+  d ? new Date(d + (d.length === 10 ? "T00:00:00" : "")).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
 
 export default async function PublicView() {
   const supabase = await createClient();
-  const [{ data: audits }, { data: branches }, { data: schedules }] = await Promise.all([
-    supabase.from("internal_audits").select("*").order("created_at", { ascending: false }),
+  const [{ data: branches }, { data: auditReports }, { data: visitRecords }] = await Promise.all([
     supabase.from("branches").select("id,name"),
-    supabase.from("audit_schedules").select("id,branch_id"),
+    supabase.from("audit_reports").select("id,audit_id,title,document_number,branch_id,report_date,prepared_by,findings,pdf_url,created_at").order("created_at", { ascending: false }),
+    supabase.from("visit_records").select("id,branch_id,visit_date,purpose,visited_by,status,pdf_url,created_at").order("visit_date", { ascending: false }),
   ]);
 
-  const branchName = new Map<string, string>((branches || []).map((r: any) => [r.id, r.name]));
-  const schedBranch = new Map<string, string>((schedules || []).map((s: any) => [s.id, branchName.get(s.branch_id) || "Unassigned"]));
+  const branchName = new Map<string, string>((branches || []).map((b: any) => [b.id, b.name]));
+  const branchColor = new Map<string, string>(
+    (branches || []).map((b: any, i: number) => [
+      b.id,
+      ["bg-emerald-500/20 text-emerald-300 border-emerald-500/40", "bg-teal-500/20 text-teal-300 border-teal-500/40", "bg-amber-500/20 text-amber-300 border-amber-500/40", "bg-purple-500/20 text-purple-300 border-purple-500/40", "bg-rose-500/20 text-rose-300 border-rose-500/40", "bg-cyan-500/20 text-cyan-300 border-cyan-500/40", "bg-orange-500/20 text-orange-300 border-orange-500/40"][i % 7],
+    ])
+  );
 
-  const plans: Plan[] = (audits || []).map((r: any) => ({
+  const reports = (auditReports || []).map((r: any) => ({
     id: r.id,
     title: r.title,
-    branch_name: branchName.get(r.branch_id) || schedBranch.get(r.schedule_id) || "Unassigned",
     document_number: r.document_number,
-    date_of_plan: r.date_of_plan,
-    audit_period: r.audit_period,
-    status: r.status,
+    branch_id: r.branch_id,
+    branch_name: branchName.get(r.branch_id) || "—",
+    report_date: r.report_date,
+    prepared_by: r.prepared_by,
+    findings: Array.isArray(r.findings) ? r.findings : [],
     pdf_url: r.pdf_url || null,
-    findings: r.findings || [],
   }));
 
-  const auditReports = plans.filter((p) => p.pdf_url);
-  const capaCount = plans.reduce((sum, p) => sum + p.findings.length, 0);
+  const visits = (visitRecords || []).map((r: any) => ({
+    id: r.id,
+    branch_name: branchName.get(r.branch_id) || "—",
+    branch_id: r.branch_id,
+    visit_date: r.visit_date,
+    purpose: r.purpose,
+    visited_by: r.visited_by,
+    status: r.status,
+    pdf_url: r.pdf_url || null,
+  }));
 
-  const formatDate = (d?: string) =>
-    d ? new Date(d + (d.length === 10 ? "T00:00:00" : "")).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
+  const totalFindings = reports.reduce((s, r) => s + r.findings.length, 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
@@ -64,14 +97,13 @@ export default async function PublicView() {
       <main className="max-w-7xl mx-auto px-6 py-12">
         <div className="text-center mb-12">
           <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3 leading-tight">
-            Audit & Capa Reports
+            Audit &amp; Visit Reports
           </h1>
           <p className="text-lg text-blue-200/70 max-w-2xl mx-auto">
-            Read-only access to audit findings and corrective action
-            (CAPA) reports. {plans.length > 0 && (
-              <span>
-                {plans.length} audit {plans.length === 1 ? "plan" : "plans"} and {capaCount} finding{" "}
-                {capaCount === 1 ? "" : "s"} are available.
+            Read-only access to published audit reports and visit evidence reports.
+            {reports.length > 0 && (
+              <span className="block text-base mt-2">
+                {reports.length} audit report{reports.length === 1 ? "" : "s"} with {totalFindings} finding{totalFindings === 1 ? "" : "s"} · {visits.length} visit report{visits.length === 1 ? "" : "s"} available.
               </span>
             )}
           </p>
@@ -84,18 +116,20 @@ export default async function PublicView() {
             </svg>
             Audit Reports
           </h2>
-          {auditReports.length === 0 ? (
+          {reports.length === 0 ? (
             <p className="text-blue-200/60">No audit reports have been published yet.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {auditReports.map((p) => (
+              {reports.map((p) => (
                 <div
                   key={p.id}
                   className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-xl p-5 flex flex-col gap-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs text-blue-300/70 mb-1">{p.branch_name}</p>
+                      <span className={`inline-block px-2 py-0.5 text-[10px] rounded-full border mb-2 ${branchColor.get(p.branch_id) || "bg-white/10 text-white/70 border-white/20"}`}>
+                        {p.branch_name}
+                      </span>
                       <h3 className="text-white font-semibold leading-snug">{p.title}</h3>
                     </div>
                     {p.document_number && (
@@ -105,21 +139,38 @@ export default async function PublicView() {
                     )}
                   </div>
                   <p className="text-sm text-blue-200/60">
-                    {formatDate(p.date_of_plan) || ""}
-                    {p.audit_period ? ` · ${p.audit_period}` : ""}
-                    {p.status ? ` · ${p.status}` : ""}
+                    {formatDate(p.report_date) || ""}
+                    {p.prepared_by ? ` · Prepared by ${p.prepared_by}` : ""}
                   </p>
-                  <a
-                    href={p.pdf_url!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-blue-600/25"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6V3m0 0L4.5 6m3-3 3 3m7.5 3H21v4.5" />
-                    </svg>
-                    View Audit Report
-                  </a>
+                  {p.findings.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(["Critical", "High", "Medium", "Low"] as const).map((sev) => {
+                        const n = computeSummary(p.findings)[sev];
+                        return n > 0 ? (
+                          <span key={sev} className={`px-2 py-0.5 text-[10px] rounded-full border ${SEV_STYLES[sev]}`}>
+                            {sev} {n}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                  {p.pdf_url ? (
+                    <a
+                      href={p.pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-blue-600/25"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6V3m0 0L4.5 6m3-3 3 3m7.5 3H21v4.5" />
+                      </svg>
+                      View Audit Report
+                    </a>
+                  ) : (
+                    <span className="mt-auto px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-blue-200/50">
+                      PDF not published yet
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -129,14 +180,53 @@ export default async function PublicView() {
         <section>
           <h2 className="text-xl font-semibold text-white mb-5 flex items-center gap-3">
             <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
             </svg>
-            CAPA Reports
+            Visit Reports
           </h2>
-{capaCount === 0 ? (
-            <p className="text-blue-200/60">No audit findings have been published yet.</p>
+          {visits.length === 0 ? (
+            <p className="text-blue-200/60">No visit reports have been published yet.</p>
           ) : (
-            <PublicCapaTree plans={plans} />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {visits.map((p) => (
+                <div
+                  key={p.id}
+                  className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-xl p-5 flex flex-col gap-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className={`inline-block px-2 py-0.5 text-[10px] rounded-full border mb-2 ${branchColor.get(p.branch_id) || "bg-white/10 text-white/70 border-white/20"}`}>
+                        {p.branch_name}
+                      </span>
+                      <h3 className="text-white font-semibold leading-snug">{p.purpose || "Visit Report"}</h3>
+                    </div>
+                    {p.status && (
+                      <span className={`shrink-0 px-2 py-0.5 text-[10px] rounded-full ${VISIT_STATUS[p.status] || "bg-white/10 text-white/70"}`}>
+                        {p.status}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-blue-200/60">
+                    {p.visited_by ? `${p.visited_by} · ` : ""}
+                    {formatDate(p.visit_date) || ""}
+                  </p>
+                  {p.pdf_url ? (
+                    <a
+                      href={p.pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-blue-600/25"
+                    >
+                      View Visit Report
+                    </a>
+                  ) : (
+                    <span className="mt-auto px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-blue-200/50">
+                      PDF not published yet
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </section>
       </main>
