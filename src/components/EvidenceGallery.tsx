@@ -135,7 +135,8 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
   const [idx, setIdx] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
-  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number; sx: number; sy: number } | null>(null);
+  const suppress = useRef(false);
 
   const imageItems = items.filter((i) => i.kind !== "audio");
   const audioItems = items.filter((i) => i.kind === "audio");
@@ -144,6 +145,15 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
     setOpen(false);
     setZoom(1);
     setPos({ x: 0, y: 0 });
+    suppress.current = false;
+  };
+
+  const onBackdropClick = (e: React.MouseEvent) => {
+    if (suppress.current) {
+      suppress.current = false;
+      return;
+    }
+    if (e.target === e.currentTarget) close();
   };
 
   const go = (dir: number) => {
@@ -190,6 +200,7 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
                 setIdx(i);
                 setZoom(1);
                 setPos({ x: 0, y: 0 });
+                suppress.current = false;
                 setOpen(true);
               }}
             />
@@ -212,12 +223,12 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
 
       {open && item
         ? createPortal(
-            <div
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
-              onClick={close}
-              role="dialog"
-              aria-modal="true"
-            >
+<div
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
+                onClick={onBackdropClick}
+                role="dialog"
+                aria-modal="true"
+              >
           <div className="absolute top-4 left-4 z-10 flex items-center gap-2 text-xs text-white/70">
             <span className="bg-white/10 border border-white/15 rounded-full px-3 py-1">
               {idx + 1} / {imageItems.length}
@@ -261,11 +272,11 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
           ) : null}
 
           {item.kind === "video" ? (
-            <div className="max-w-[94vw] max-h-[92vh] rounded-xl overflow-hidden ring-1 ring-white/10" style={{ maxWidth: 960 }}>
+            <div className="max-w-[94vw] max-h-[92vh] rounded-xl overflow-hidden ring-1 ring-white/10" style={{ maxWidth: 960 }} onClick={(e) => e.stopPropagation()}>
               <video key={item.src} controls autoPlay playsInline src={item.src} className="max-h-[80vh] w-full object-contain bg-black" />
             </div>
           ) : item.kind === "audio" ? (
-            <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4">
+            <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
               <img src={item.thumb} alt="Voice note" className="h-24 rounded-lg" />
               <audio controls autoPlay src={item.src} className="w-full" />
             </div>
@@ -283,7 +294,7 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
                 alt={item.caption}
                 draggable={false}
                 onMouseDown={(e) => {
-                  drag.current = { x: e.clientX, y: e.clientY, ox: pos.x, oy: pos.y };
+                  drag.current = { x: e.clientX, y: e.clientY, ox: pos.x, oy: pos.y, sx: e.clientX, sy: e.clientY };
                 }}
                 onMouseMove={(e) => {
                   if (!drag.current || zoom <= 1) return;
@@ -292,11 +303,15 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
                     y: drag.current.oy + (e.clientY - drag.current.y) / zoom,
                   });
                 }}
-                onMouseUp={() => (drag.current = null)}
+                onMouseUp={(e) => {
+                  const d = drag.current;
+                  drag.current = null;
+                  if (d && (Math.abs(e.clientX - d.sx) > 5 || Math.abs(e.clientY - d.sy) > 5)) suppress.current = true;
+                }}
                 onMouseLeave={() => (drag.current = null)}
                 onTouchStart={(e) => {
                   const t = e.touches[0];
-                  drag.current = { x: t.clientX, y: t.clientY, ox: pos.x, oy: pos.y };
+                  drag.current = { x: t.clientX, y: t.clientY, ox: pos.x, oy: pos.y, sx: t.clientX, sy: t.clientY };
                 }}
                 onTouchMove={(e) => {
                   if (!drag.current || zoom <= 1) return;
@@ -306,14 +321,19 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
                     y: drag.current.oy + (t.clientY - drag.current.y) / zoom,
                   });
                 }}
-                onTouchEnd={() => (drag.current = null)}
+                onTouchEnd={(e) => {
+                  const t = e.changedTouches[0];
+                  const d = drag.current;
+                  drag.current = null;
+                  if (d && (Math.abs(t.clientX - d.sx) > 5 || Math.abs(t.clientY - d.sy) > 5)) suppress.current = true;
+                }}
                 className="max-w-[94vw] max-h-[92vh] object-contain select-none cursor-grab active:cursor-grabbing touch-none"
                 style={{ transform: `scale(${zoom}) translate(${pos.x}px, ${pos.y}px)`, transformOrigin: "center" }}
               />
             </div>
           )}
 
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-2 py-1.5">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
             {item.kind === "image" ? (
               <>
                 <button
