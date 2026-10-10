@@ -28,13 +28,14 @@ async function isKnownPublicFile(fileId: string): Promise<boolean> {
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   const kind = req.nextUrl.searchParams.get("kind");
+  const dl = req.nextUrl.searchParams.get("download") === "1";
   if (!id || !/^[A-Za-z0-9_-]{10,}$/.test(id)) {
     return new NextResponse("Missing or invalid file id", { status: 400 });
   }
 
   if (kind === "image") {
     try {
-      const upstream = await fetch(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w800`, {
+      const upstream = await fetch(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w2000`, {
         redirect: "follow",
         cache: "force-cache",
       });
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
         status: 200,
         headers: {
           "Content-Type": ct,
+          "Content-Disposition": dl ? 'attachment; filename="evidence.jpg"' : "inline",
           "Cache-Control": "public, max-age=86400",
           "X-Content-Type-Options": "nosniff",
         },
@@ -71,7 +73,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": 'inline; filename="report.pdf"',
+        "Content-Disposition": dl ? 'attachment; filename="report.pdf"' : 'inline; filename="report.pdf"',
         "Cache-Control": "public, max-age=86400",
         "X-Content-Type-Options": "nosniff",
       },

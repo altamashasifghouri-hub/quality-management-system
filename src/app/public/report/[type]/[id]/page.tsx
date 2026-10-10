@@ -1,5 +1,6 @@
 import Link from "next/link";
 import QmsBrand from "@/components/QmsBrand";
+import EvidenceGallery from "@/components/EvidenceGallery";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -49,16 +50,18 @@ function FindingCard({ f, n }: { f: Finding; n: number }) {
   const resolved = !!f.resolved;
   const ev = (f.evidence || []).map(toProxyImg).filter(Boolean) as string[];
   return (
-    <div className="bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5">
+    <div className={`bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5 ring-1 ${resolved ? "ring-emerald-400/20" : "ring-amber-400/10"}`}>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="text-xs font-mono text-blue-200/50">#{String(n).padStart(2, "0")}</span>
         <span className={`px-2 py-0.5 text-[10px] rounded-full border ${SEV_STYLES[sev] || SEV_STYLES.Medium}`}>{sev}</span>
-        <span className={`px-2 py-0.5 text-[10px] rounded-full border inline-flex items-center gap-1 ${
+        <span className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border inline-flex items-center gap-1.5 ${
           resolved ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/40" : "bg-amber-500/15 text-amber-300 border-amber-400/40"
         }`}>
           {resolved ? (
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-          ) : null}
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+          )}
           {resolved ? "Resolved" : "Open"}
         </span>
         {f.clause ? <span className="text-[10px] text-blue-200/50 font-mono">{f.clause}</span> : null}
@@ -75,10 +78,8 @@ function FindingCard({ f, n }: { f: Finding; n: number }) {
         </p>
       ) : null}
       {ev.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {ev.map((src, i) => (
-            <img key={i} src={src} alt={`Evidence ${i + 1}`} loading="lazy" className="h-24 w-24 object-cover rounded-lg border border-white/10 bg-black/20" />
-          ))}
+        <div className="mt-4">
+          <EvidenceGallery images={ev} label="Evidence" />
         </div>
       ) : null}
     </div>
@@ -174,7 +175,7 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
           </div>
 
           {findings.length > 0 ? (
-            <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="mb-6 grid grid-cols-2 sm:grid-cols-6 gap-3">
               {SEVERITY_ORDER.map((sev) => (
                 <div key={sev} className={`rounded-xl border px-3 py-2.5 ${SEV_STYLES[sev]}`}>
                   <div className="text-xl font-bold">{summary[sev]}</div>
@@ -183,7 +184,11 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
               ))}
               <div className={`rounded-xl border px-3 py-2.5 ${resolvedCount > 0 ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/40" : "bg-amber-500/15 text-amber-300 border-amber-400/40"}`}>
                 <div className="text-xl font-bold">{resolvedCount}/{findings.length}</div>
-                <div className="text-[11px] opacity-80">{resolvedCount === findings.length && findings.length > 0 ? "All resolved" : "Resolved"}</div>
+                <div className="text-[11px] opacity-80">Resolved</div>
+              </div>
+              <div className="rounded-xl border px-3 py-2.5 bg-amber-500/15 text-amber-300 border-amber-400/40">
+                <div className="text-xl font-bold">{findings.length - resolvedCount}/{findings.length}</div>
+                <div className="text-[11px] opacity-80">Open</div>
               </div>
             </div>
           ) : null}
@@ -290,10 +295,8 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
                       </div>
                       <p className="text-sm text-white/90 leading-relaxed whitespace-pre-line">{o.context}</p>
                       {pics.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {pics.map((src, j) => (
-                            <img key={j} src={src} alt={`Observation ${i + 1} photo ${j + 1}`} loading="lazy" className="h-24 w-24 object-cover rounded-lg border border-white/10 bg-black/20" />
-                          ))}
+                        <div className="mt-3">
+                          <EvidenceGallery images={pics} label="Observation photo" />
                         </div>
                       ) : null}
                     </div>
@@ -361,7 +364,7 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
         </div>
 
         {findings.length > 0 ? (
-          <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="mb-6 grid grid-cols-2 sm:grid-cols-6 gap-3">
             {SEVERITY_ORDER.map((sev) => (
               <div key={sev} className={`rounded-xl border px-3 py-2.5 ${SEV_STYLES[sev]}`}>
                 <div className="text-xl font-bold">{summary[sev]}</div>
