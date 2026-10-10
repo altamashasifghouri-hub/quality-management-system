@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
 function radialTexture(colors: string[]) {
@@ -46,8 +46,42 @@ export default function ThreedCard({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const axis = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const active = useRef(false);
+  const [engaged, setEngaged] = useState(false);
 
   useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const onPointer = (e: PointerEvent) => {
+      const r = wrap.getBoundingClientRect();
+      axis.current.tx = ((e.clientX - r.left) / r.width) * 2 - 1;
+      axis.current.ty = -(((e.clientY - r.top) / r.height) * 2 - 1);
+    };
+    const onEnter = () => {
+      active.current = true;
+      setEngaged(true);
+    };
+    const onLeave = () => {
+      active.current = false;
+      axis.current.tx = 0;
+      axis.current.ty = 0;
+      setEngaged(false);
+      if (wrap) {
+        wrap.style.setProperty("--tx", "0deg");
+        wrap.style.setProperty("--ty", "0deg");
+      }
+    };
+    wrap.addEventListener("pointerenter", onEnter);
+    wrap.addEventListener("pointerleave", onLeave);
+    wrap.addEventListener("pointermove", onPointer);
+    return () => {
+      wrap.removeEventListener("pointerenter", onEnter);
+      wrap.removeEventListener("pointerleave", onLeave);
+      wrap.removeEventListener("pointermove", onPointer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!engaged) return;
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return;
@@ -169,29 +203,9 @@ export default function ThreedCard({
     };
     raf = requestAnimationFrame(loop);
 
-    const onPointer = (e: PointerEvent) => {
-      const r = wrap.getBoundingClientRect();
-      axis.current.tx = ((e.clientX - r.left) / r.width) * 2 - 1;
-      axis.current.ty = -(((e.clientY - r.top) / r.height) * 2 - 1);
-    };
-    const onEnter = () => {
-      active.current = true;
-    };
-    const onLeave = () => {
-      active.current = false;
-      axis.current.tx = 0;
-      axis.current.ty = 0;
-    };
-    wrap.addEventListener("pointerenter", onEnter);
-    wrap.addEventListener("pointerleave", onLeave);
-    wrap.addEventListener("pointermove", onPointer);
-
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      wrap.removeEventListener("pointerenter", onEnter);
-      wrap.removeEventListener("pointerleave", onLeave);
-      wrap.removeEventListener("pointermove", onPointer);
       pgeo.dispose();
       ptsMat.dispose();
       border.geometry.dispose();
@@ -204,7 +218,7 @@ export default function ThreedCard({
       (sheenC.material as THREE.Material).dispose();
       renderer.dispose();
     };
-  }, []);
+  }, [engaged]);
 
   return (
     <div
