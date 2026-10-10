@@ -9,6 +9,18 @@ import Navbar from "@/components/Navbar";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
 import { loadPdfImage, imageDims, zoomUrl, preloadPdfImages } from "@/lib/pdf-image";
+import {
+  buildAudioEvidence,
+  buildVideoEvidence,
+  captureVideoPoster,
+  evidenceCaption,
+  evidenceDisplayUrl,
+  evidenceLinkUrl,
+  isMediaEvidence,
+  mediaUploadError,
+  putFileToDrive,
+} from "@/lib/evidence";
+import EvidenceThumb from "@/components/EvidenceThumb";
 
 interface Branch { id: string; name: string; }
 
@@ -98,6 +110,7 @@ export default function VisitManagementPage() {
   const [oPictures, setOPictures] = useState<string[]>([]);
   const [oSaving, setOSaving] = useState(false);
   const [oUploading, setOUploading] = useState(false);
+  const [oUploadPct, setOUploadPct] = useState<number | null>(null);
 
   const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
   const [sigBusyId, setSigBusyId] = useState<string | null>(null);
@@ -203,7 +216,7 @@ export default function VisitManagementPage() {
     setPdfBusyId(rec.id);
     setError("");
     try {
-      await preloadPdfImages([LOGO, rec.signature || SIG_DEFAULT, ...rec.observations.flatMap((o) => o.pictures || [])]);
+      await preloadPdfImages([LOGO, rec.signature || SIG_DEFAULT, ...rec.observations.flatMap((o) => (o.pictures || []).map((u) => evidenceDisplayUrl(u)))]);
 
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -284,7 +297,7 @@ export default function VisitManagementPage() {
           ["Visited By", rec.visited_by || "—"],
           ["Status", rec.status || "—"],
           ["Evidence Notes", String(rec.observations.length)],
-          ["Picture Evidence", String(totalPics)],
+          ["Evidence Files", String(totalPics)],
           ["Generated On", new Date().toLocaleString("en-GB")],
         ],
         styles: { fontSize: 9, cellPadding: 2.5 },
@@ -353,9 +366,10 @@ export default function VisitManagementPage() {
               ey = margin;
               placed = 0;
             }
+            const media = isMediaEvidence(url);
             let dataUrl = "";
             try {
-              dataUrl = await loadPdfImage(url);
+              dataUrl = await loadPdfImage(evidenceDisplayUrl(url));
             } catch {
               placed++;
               continue;
@@ -380,10 +394,10 @@ export default function VisitManagementPage() {
             doc.setDrawColor(148, 163, 184);
             doc.setLineWidth(0.2);
             doc.rect(ex, iy, w, h);
-            doc.link(ex, iy, w, h, { url: zoomUrl(url) });
+            doc.link(ex, iy, w, h, { url: media ? evidenceLinkUrl(url) : zoomUrl(url) });
             doc.setFontSize(7.5);
             doc.setTextColor(100, 116, 139);
-            doc.text("Click for full view", ex + w / 2, iy + h + 3, { align: "center" });
+            doc.text(media ? evidenceCaption(url) : "Click for full view", ex + w / 2, iy + h + 3, { align: "center" });
             ex += thumbW + gap;
             placed++;
           }
@@ -420,7 +434,7 @@ export default function VisitManagementPage() {
       autoTable(doc, {
         startY: y,
         theme: "grid",
-        head: [["Outcome", "Notes", "Pictures", "References"]],
+        head: [["Outcome", "Notes", "Files", "References"]],
         body: byOutcome,
         styles: { fontSize: 9, cellPadding: 2.5 },
         headStyles: { fillColor: green },
@@ -461,7 +475,7 @@ export default function VisitManagementPage() {
       doc.setTextColor(148, 163, 184);
       doc.text("Generated from the Quality Management System — Visit Management module.", margin, y);
       doc.text(
-        "Picture evidence is stored in Google Drive; click any thumbnail in the PDF to open the full-size image.",
+        "Evidence (photos, video and voice) is stored in Google Drive; click any thumbnail in the PDF to open it.",
         margin,
         y + 4
       );
@@ -550,36 +564,100 @@ export default function VisitManagementPage() {
     fetchData();
   }
 
-  async function handleUploadPictures(files: FileList | null) {
+  async function handleUploadEvidence(files: FileList | null) {
     if (!files || files.length === 0) return;
     setOUploading(true);
     const urls: string[] = [];
     for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/")) {
-        showErr(`${file.name} is not an image.`);
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+      const isAudio = file.type.startsWith("audio/");
+      if (!isImage && !isVideo && !isAudio) {
+        showErr(`${file.name} is not an image, video or voice recording.`);
         continue;
       }
-      const fd = new FormData();
-      fd.append("file", file);
       try {
-        const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          showErr(driveErrorMessage(errJson, `${file.name} upload failed.`));
+        if (isImage) {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            showErr(driveErrorMessage(errJson, `${file.name} upload failed.`));
+            continue;
+          }
+          const json = await res.json();
+          if (json.url) urls.push(json.url);
           continue;
         }
-        const json = await res.json();
-        if (json.url) urls.push(json.url);
+
+        const tooBig = mediaUploadError(file);
+        if (tooBig) {
+          showErr(tooBig);
+          continue;
+        }
+
+        let posterFileId = "";
+        if (isVideo) {
+          try {
+            const poster = await captureVideoPoster(file);
+            if (poster) {
+              const fd = new FormData();
+              fd.append("file", new File([poster], `${file.name.replace(/\.[^.]+$/, "") || "video"}_poster.jpg`, { type: "image/jpeg" }));
+              const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+              const json = await res.json().catch(() => ({}));
+              if (res.ok && json.fileId) posterFileId = json.fileId;
+            }
+          } catch {
+            /* the poster is optional — the video still uploads without it */
+          }
+        }
+
+        const initRes = await fetch("/api/drive-resumable", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "init", name: file.name, mime: file.type, size: file.size, folderKind: "evidence" }),
+        });
+        const initJson = await initRes.json().catch(() => ({}));
+        if (!initRes.ok || !initJson.uploadUrl) {
+          showErr(driveErrorMessage(initJson, `${file.name} upload failed.`));
+          continue;
+        }
+
+        setOUploadPct(0);
+        let putId = "";
+        let putError = "";
+        try {
+          const putResult = await putFileToDrive(initJson.uploadUrl, file, file.type, setOUploadPct);
+          putId = putResult?.id || "";
+        } catch (e: any) {
+          putError = e?.message || "The upload did not complete.";
+        } finally {
+          setOUploadPct(null);
+        }
+
+        const finRes = await fetch("/api/drive-resumable", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "finish", fileId: putId, nonce: initJson.nonce, since: initJson.since, name: file.name, mime: file.type }),
+        });
+        const finJson = await finRes.json().catch(() => ({}));
+        const finalId = finJson.fileId || putId;
+        if (!finRes.ok || !finalId) {
+          showErr(putError || driveErrorMessage(finJson, `${file.name} upload failed.`));
+          continue;
+        }
+        urls.push(isAudio ? buildAudioEvidence(finalId) : buildVideoEvidence(finalId, posterFileId));
       } catch {
         showErr(`${file.name} upload failed.`);
       }
     }
     setOPictures((prev) => [...prev, ...urls]);
     setOUploading(false);
-    if (urls.length) showMsg(`${urls.length} picture${urls.length > 1 ? "s" : ""} uploaded to Google Drive.`);
+    if (urls.length) showMsg(`${urls.length} evidence file${urls.length > 1 ? "s" : ""} uploaded to Google Drive.`);
   }
 
-  async function handleRemovePicture(url: string) {
+  async function handleRemoveEvidence(url: string) {
     setOPictures((prev) => prev.filter((u) => u !== url));
     await deleteDriveFileByUrl(url);
   }
@@ -604,7 +682,7 @@ export default function VisitManagementPage() {
   async function handleDeleteObservation(visitId: string, key: string) {
     const rec = records.find((r) => r.id === visitId);
     if (!rec) return;
-    if (!confirm("Delete this evidence note and its pictures?")) return;
+    if (!confirm("Delete this evidence note and its files?")) return;
     const target = rec.observations.find((o) => o.key === key);
     const obs = rec.observations.filter((o) => o.key !== key);
     const { error: err } = await supabase
@@ -631,7 +709,7 @@ export default function VisitManagementPage() {
         <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Visit Management</h1>
-            <p className="text-emerald-200/60">Branch-wise visit records with written context and picture evidence stored in Google Drive. Use PDF on any visit to export a report.</p>
+            <p className="text-emerald-200/60">Branch-wise visit records with written context and photo, video and voice evidence stored in Google Drive. Use PDF on any visit to export a report.</p>
           </div>
           <select
             value={branchFilter}
@@ -712,7 +790,7 @@ export default function VisitManagementPage() {
                                 </div>
                                 {r.context && <p className="text-sm text-emerald-100/70 mt-1.5 break-words">{r.context}</p>}
                                 <p className="text-xs text-emerald-200/40 mt-1">
-                                  {r.observations.length} evidence note{r.observations.length === 1 ? "" : "s"} · {r.observations.reduce((s, o) => s + (o.pictures?.length || 0), 0)} picture(s)
+                                  {r.observations.length} evidence note{r.observations.length === 1 ? "" : "s"} · {r.observations.reduce((s, o) => s + (o.pictures?.length || 0), 0)} file(s)
                                 </p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
@@ -768,9 +846,11 @@ export default function VisitManagementPage() {
                                     {o.pictures?.length > 0 && (
                                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-3">
                                         {o.pictures.map((u) => (
-                                          <a key={u} href={u} target="_blank" rel="noreferrer" className="block aspect-video rounded-lg overflow-hidden border border-white/10 hover:border-emerald-400/50 transition-colors">
-                                            <img src={u} alt="evidence" className="w-full h-full object-cover" />
-                                          </a>
+                                          <EvidenceThumb
+                                            key={u}
+                                            url={u}
+                                            className="w-full h-40 object-cover rounded-lg border border-white/10 hover:border-emerald-400/50 transition-colors"
+                                          />
                                         ))}
                                       </div>
                                     )}
@@ -789,14 +869,18 @@ export default function VisitManagementPage() {
 
                                   <label className="block cursor-pointer">
                                     <div className="px-4 py-2.5 bg-white/5 border border-dashed border-white/15 rounded-lg text-sm text-emerald-200/70 hover:border-emerald-400/50 hover:text-emerald-200 transition-colors text-center">
-                                      {oUploading ? "Uploading to Google Drive..." : "Upload picture evidence (goes to Google Drive)"}
+                                      {oUploading
+                                        ? oUploadPct !== null
+                                          ? `Uploading video ${oUploadPct}%...`
+                                          : "Uploading to Google Drive..."
+                                        : "Upload photo, video or voice evidence (goes to Google Drive)"}
                                     </div>
                                     <input
                                       type="file"
-                                      accept="image/*"
+                                      accept="image/*,video/*,audio/*"
                                       multiple
                                       className="hidden"
-                                      onChange={(e) => { handleUploadPictures(e.target.files); e.target.value = ""; }}
+                                      onChange={(e) => { handleUploadEvidence(e.target.files); e.target.value = ""; }}
                                     />
                                   </label>
 
@@ -804,10 +888,8 @@ export default function VisitManagementPage() {
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
                                       {oPictures.map((u) => (
                                         <div key={u} className="relative group">
-                                          <a href={u} target="_blank" rel="noreferrer" className="block aspect-video rounded-lg overflow-hidden border border-white/10">
-                                            <img src={u} alt="evidence" className="w-full h-full object-cover" />
-                                          </a>
-                                          <button onClick={() => handleRemovePicture(u)} className="absolute top-1 right-1 px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-red-300 opacity-0 group-hover:opacity-100 transition-opacity">Remove</button>
+                                          <EvidenceThumb url={u} className="w-full h-40 object-cover rounded-lg border border-white/10" />
+                                          <button onClick={() => handleRemoveEvidence(u)} className="absolute top-1 right-1 z-10 px-1.5 py-0.5 text-[10px] rounded bg-black/70 text-red-300 opacity-0 group-hover:opacity-100 transition-opacity">Remove</button>
                                         </div>
                                       ))}
                                     </div>
