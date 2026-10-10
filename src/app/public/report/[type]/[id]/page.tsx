@@ -1,6 +1,7 @@
 import Link from "next/link";
 import QmsBrand from "@/components/QmsBrand";
 import EvidenceGallery from "@/components/EvidenceGallery";
+import ThreedCard from "@/components/ThreedCard";
 import { buildEvidenceItems, type EvidenceItem } from "@/lib/evidence";
 import { createClient } from "@/lib/supabase/server";
 
@@ -40,7 +41,7 @@ function FindingCard({ f, n }: { f: Finding; n: number }) {
   const resolved = !!f.resolved;
   const items: EvidenceItem[] = buildEvidenceItems(f.evidence || []);
   return (
-    <div className={`bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5 ring-1 ${resolved ? "ring-emerald-400/20" : "ring-amber-400/10"}`}>
+    <ThreedCard className={`bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5 ring-1 ${resolved ? "ring-emerald-400/20" : "ring-amber-400/10"}`}>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="text-xs font-mono text-blue-200/50">#{String(n).padStart(2, "0")}</span>
         <span className={`px-2 py-0.5 text-[10px] rounded-full border ${SEV_STYLES[sev] || SEV_STYLES.Medium}`}>{sev}</span>
@@ -72,7 +73,7 @@ function FindingCard({ f, n }: { f: Finding; n: number }) {
           <EvidenceGallery items={items} label="Evidence" />
         </div>
       ) : null}
-    </div>
+    </ThreedCard>
   );
 }
 
