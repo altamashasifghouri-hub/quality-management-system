@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as THREE from "three";
 import type { EvidenceItem } from "@/lib/evidence";
 
@@ -39,18 +40,10 @@ function ThreedTile({ src }: { src: string }) {
       const w = img?.naturalWidth || 1;
       const h = img?.naturalHeight || 1;
       const a = w / h;
-      geo.scale(a > 1 ? 1 : a, a > 1 ? 1 / a : 1, 1);
+      mesh.scale.set(a > 1 ? 1 : a, a > 1 ? 1 / a : 1, 1);
     };
     if (texture.image) fit();
     else texture.addEventListener("load", fit);
-
-    const pointer = { x: 0, y: 0 };
-    const onMove = (e: PointerEvent) => {
-      const r = host.getBoundingClientRect();
-      pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1;
-      pointer.y = -(((e.clientY - r.top) / r.height) * 2 - 1);
-    };
-    host.addEventListener("pointermove", onMove);
 
     const resize = () => {
       const w = host.clientWidth;
@@ -66,11 +59,13 @@ function ThreedTile({ src }: { src: string }) {
 
     let raf = 0;
     const loop = () => {
-      mesh.rotation.y += (pointer.x * 0.26 - mesh.rotation.y) * 0.14;
-      mesh.rotation.x += (pointer.y * 0.26 - mesh.rotation.x) * 0.14;
-      mesh.position.x = pointer.x * 0.05;
-      mesh.position.y = pointer.y * 0.05;
-      glare.position.set(pointer.x * 1.7, pointer.y * 1.7, 1.4);
+      const img = texture.image as HTMLImageElement | null;
+      const w = img?.naturalWidth || 1;
+      const h = img?.naturalHeight || 1;
+      const a = w / h;
+      const zoomN = mesh.scale.x / (a > 1 ? 1 : a);
+      const ns = zoomN + (1.1 - zoomN) * 0.12;
+      mesh.scale.set(ns * (a > 1 ? 1 : a), ns * (a > 1 ? 1 / a : 1), 1);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };
@@ -79,7 +74,6 @@ function ThreedTile({ src }: { src: string }) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      host.removeEventListener("pointermove", onMove);
       geo.dispose();
       mat.dispose();
       texture.dispose();
@@ -216,13 +210,14 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
         </div>
       ))}
 
-      {open && item ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
-          onClick={close}
-          role="dialog"
-          aria-modal="true"
-        >
+      {open && item
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 sm:p-8"
+              onClick={close}
+              role="dialog"
+              aria-modal="true"
+            >
           <div className="absolute top-4 left-4 z-10 flex items-center gap-2 text-xs text-white/70">
             <span className="bg-white/10 border border-white/15 rounded-full px-3 py-1">
               {idx + 1} / {imageItems.length}
@@ -323,7 +318,10 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
               <>
                 <button
                   type="button"
-                  onClick={() => setZoom((z) => Math.max(1, z - 0.25))}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setZoom((z) => Math.max(1, z - 0.25));
+                  }}
                   aria-label="Zoom out"
                   className="w-9 h-9 rounded-full text-white hover:bg-white/20 flex items-center justify-center transition-colors"
                 >
@@ -332,7 +330,10 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
                 <span className="w-14 text-center text-xs text-white/80 font-mono">{Math.round(zoom * 100)}%</span>
                 <button
                   type="button"
-                  onClick={() => setZoom((z) => Math.min(5, z + 0.25))}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setZoom((z) => Math.min(5, z + 0.25));
+                  }}
                   aria-label="Zoom in"
                   className="w-9 h-9 rounded-full text-white hover:bg-white/20 flex items-center justify-center transition-colors"
                 >
@@ -345,12 +346,14 @@ export default function EvidenceGallery({ items, label }: { items: EvidenceItem[
               href={`${item.src}&download=1`}
               download
               aria-label="Download"
+              onClick={(e) => e.stopPropagation()}
               className="w-9 h-9 rounded-full text-white hover:bg-white/20 flex items-center justify-center transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             </a>
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </>
   );
