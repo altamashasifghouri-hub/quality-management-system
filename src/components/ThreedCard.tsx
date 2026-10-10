@@ -3,38 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
-function radialTexture(colors: string[]) {
-  const c = document.createElement("canvas");
-  c.width = c.height = 256;
-  const ctx = c.getContext("2d")!;
-  const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0, colors[0]);
-  g.addColorStop(0.35, colors[1]);
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 256, 256);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-function borderTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 256;
-  const ctx = c.getContext("2d")!;
-  const g = ctx.createLinearGradient(0, 0, 256, 256);
-  g.addColorStop(0, "rgba(96,165,250,0.95)");
-  g.addColorStop(0.5, "rgba(233,213,255,0.7)");
-  g.addColorStop(1, "rgba(34,211,238,0.95)");
-  ctx.strokeStyle = g;
-  ctx.lineWidth = 24;
-  ctx.globalAlpha = 0.95;
-  ctx.strokeRect(14, 14, 228, 228);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 export default function ThreedCard({
   children,
   className,
@@ -65,10 +33,10 @@ export default function ThreedCard({
       axis.current.tx = 0;
       axis.current.ty = 0;
       setEngaged(false);
-      if (wrap) {
-        wrap.style.setProperty("--tx", "0deg");
-        wrap.style.setProperty("--ty", "0deg");
-      }
+      wrap.style.setProperty("--tx", "0deg");
+      wrap.style.setProperty("--ty", "0deg");
+      wrap.style.setProperty("--sc", "1");
+      wrap.style.boxShadow = "0 12px 40px -20px rgba(0,0,0,0.7)";
     };
     wrap.addEventListener("pointerenter", onEnter);
     wrap.addEventListener("pointerleave", onLeave);
@@ -92,48 +60,84 @@ export default function ThreedCard({
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
     camera.position.z = 4;
 
-    const makeSheen = (colors: string[]) => {
-      const m = new THREE.Mesh(
+    const makeTexture = (draw: (ctx: CanvasRenderingContext2D, s: number) => void) => {
+      const el = document.createElement("canvas");
+      el.width = el.height = 256;
+      const ctx = el.getContext("2d")!;
+      draw(ctx, 256);
+      const t = new THREE.CanvasTexture(el);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+
+    const spotTex = makeTexture((ctx, s) => {
+      const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      g.addColorStop(0, "rgba(255,255,255,0.95)");
+      g.addColorStop(0.35, "rgba(255,255,255,0.35)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, s, s);
+    });
+    const bandTex = makeTexture((ctx, s) => {
+      const g = ctx.createLinearGradient(0, 0, s, 0);
+      g.addColorStop(0, "rgba(255,255,255,0)");
+      g.addColorStop(0.5, "rgba(255,255,255,0.9)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, s, s);
+    });
+    const aurTex = makeTexture((ctx, s) => {
+      const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      g.addColorStop(0, "rgba(56,189,248,0.85)");
+      g.addColorStop(0.4, "rgba(129,140,248,0.5)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, s, s);
+    });
+    const ringTex = makeTexture((ctx, s) => {
+      const g = ctx.createLinearGradient(0, 0, s, s);
+      g.addColorStop(0, "rgba(56,189,248,0.95)");
+      g.addColorStop(0.5, "rgba(233,213,255,0.85)");
+      g.addColorStop(1, "rgba(34,211,238,0.95)");
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 30;
+      ctx.globalAlpha = 1;
+      ctx.strokeRect(14, 14, 228, 228);
+    });
+
+    const add = (map: THREE.Texture, opacity: number) =>
+      new THREE.Mesh(
         new THREE.PlaneGeometry(1, 1),
         new THREE.MeshBasicMaterial({
-          map: radialTexture(colors),
+          map,
           transparent: true,
-          opacity: 0,
+          opacity,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
         })
       );
-      scene.add(m);
-      return m;
-    };
-    const sheenA = makeSheen(["rgba(255,255,255,0.9)", "rgba(96,165,250,0.75)"]);
-    const sheenB = makeSheen(["rgba(255,255,255,0.7)", "rgba(129,140,248,0.55)"]);
-    const sheenC = makeSheen(["rgba(255,255,255,0.6)", "rgba(244,114,182,0.4)"]);
 
-    const border = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
-        map: borderTexture(),
-        transparent: true,
-        opacity: 0,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      })
-    );
-    scene.add(border);
+    const spot = add(spotTex, 0);
+    scene.add(spot);
+    const band = add(bandTex, 0);
+    scene.add(band);
+    const aurA = add(aurTex, 0);
+    scene.add(aurA);
+    const aurB = add(aurTex, 0);
+    scene.add(aurB);
+    const ring = add(ringTex, 0);
+    ring.material.side = THREE.DoubleSide;
+    scene.add(ring);
 
-    const N = 36;
+    const N = 42;
     const positions = new Float32Array(N * 3);
     const seeds: number[] = [];
-    for (let i = 0; i < N; i++) {
-      seeds.push(Math.random() * Math.PI * 2);
-    }
+    for (let i = 0; i < N; i++) seeds.push(Math.random() * Math.PI * 2);
     const pgeo = new THREE.BufferGeometry();
     pgeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     const ptsMat = new THREE.PointsMaterial({
       color: 0x93c5fd,
-      size: 0.02,
+      size: 0.018,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
@@ -153,11 +157,12 @@ export default function ThreedCard({
       camera.updateProjectionMatrix();
       fovH = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.position.z;
       wu = fovH * camera.aspect;
-      border.scale.set(wu * 1.02, fovH * 1.02, 1);
-      sheenA.scale.set(wu * 1.7, fovH * 1.7, 1);
-      sheenB.scale.set(wu * 1.3, fovH * 1.3, 1);
-      sheenC.scale.set(wu * 1.4, fovH * 1.4, 1);
-      particles.material.size = Math.max(0.012, fovH * 0.014);
+      ring.scale.set(wu * 1.02, fovH * 1.02, 1);
+      spot.scale.set(wu * 0.8, fovH * 0.8, 1);
+      band.scale.set(wu * 0.4, fovH * 2.4, 1);
+      aurA.scale.set(wu * 1.1, fovH * 1.1, 1);
+      aurB.scale.set(wu * 1.0, fovH * 1.0, 1);
+      particles.material.size = Math.max(0.012, fovH * 0.016);
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -165,38 +170,43 @@ export default function ThreedCard({
 
     let raf = 0;
     const loop = () => {
-      axis.current.x += (axis.current.tx - axis.current.x) * 0.09;
-      axis.current.y += (axis.current.ty - axis.current.y) * 0.09;
+      axis.current.x += (axis.current.tx - axis.current.x) * 0.1;
+      axis.current.y += (axis.current.ty - axis.current.y) * 0.1;
       const hx = axis.current.x;
       const hy = axis.current.y;
       const a = active.current ? 1 : 0;
-      const t = 0.12;
-      (sheenA.material as THREE.MeshBasicMaterial).opacity += (a * 0.55 - sheenA.material.opacity) * t;
-      (sheenB.material as THREE.MeshBasicMaterial).opacity += (a * 0.4 - sheenB.material.opacity) * t;
-      (sheenC.material as THREE.MeshBasicMaterial).opacity += (a * 0.35 - sheenC.material.opacity) * t;
-      (border.material as THREE.MeshBasicMaterial).opacity += (a * 0.95 - border.material.opacity) * t;
-      ptsMat.opacity += (a * 0.9 - ptsMat.opacity) * t;
+      const t = 0.14;
 
-      sheenA.position.set(hx * wu * 0.34, -hy * fovH * 0.38, 0.3);
-      sheenB.position.set(-hx * wu * 0.3, hy * fovH * 0.3, 0.32);
-      sheenC.position.set(hx * wu * 0.2, hy * fovH * 0.42, 0.34);
-      sheenA.rotation.z = -hx * 0.35;
-      sheenB.rotation.z = hy * 0.28;
-      sheenC.rotation.z = hx * 0.22;
-      border.rotation.z += 0.0016;
+      (spot.material as THREE.MeshBasicMaterial).opacity += (a * 0.32 - spot.material.opacity) * t;
+      (band.material as THREE.MeshBasicMaterial).opacity += (a * 0.24 - band.material.opacity) * t;
+      (aurA.material as THREE.MeshBasicMaterial).opacity += (a * 0.14 - aurA.material.opacity) * t;
+      (aurB.material as THREE.MeshBasicMaterial).opacity += (a * 0.1 - aurB.material.opacity) * t;
+      (ring.material as THREE.MeshBasicMaterial).opacity += (a * 0.85 - ring.material.opacity) * t;
+      ptsMat.opacity += (a * 0.6 - ptsMat.opacity) * t;
+
+      const now = performance.now();
+      const sp = ((now * 0.0006) % 2) - 1;
+
+      spot.position.set(hx * wu * 0.42, -hy * fovH * 0.46, 1.2);
+      band.position.set(sp * wu * 0.7, 0, 1.1);
+      band.rotation.z = 0.55;
+      aurA.position.set(-hx * wu * 0.4, hy * fovH * 0.4, 1.05);
+      aurB.position.set(hx * wu * 0.35, -hy * fovH * 0.35, 1.0);
+      ring.position.z = 0.9;
+      ring.rotation.z += 0.0014;
 
       const ppos = pgeo.attributes.position.array as Float32Array;
-      const now = performance.now();
       for (let i = 0; i < N; i++) {
-        ppos[i * 3] = hx * wu * 0.45 + Math.sin(seeds[i] * 3 + now * 0.0004) * wu * 0.5;
-        ppos[i * 3 + 1] += 0.0005 * (0.6 + 0.4 * Math.sin(seeds[i]));
+        ppos[i * 3] = hx * wu * 0.45 + Math.sin(seeds[i] * 3 + now * 0.00045) * wu * 0.5;
+        ppos[i * 3 + 1] += 0.0006 * (0.6 + 0.4 * Math.sin(seeds[i]));
         if (ppos[i * 3 + 1] > fovH * 0.55) ppos[i * 3 + 1] = -fovH * 0.55;
-        ppos[i * 3 + 2] = 0.25;
+        ppos[i * 3 + 2] = 0.98;
       }
       pgeo.attributes.position.needsUpdate = true;
 
-      wrap.style.setProperty("--tx", `${(hx * 7).toFixed(2)}deg`);
-      wrap.style.setProperty("--ty", `${(-hy * 7).toFixed(2)}deg`);
+      wrap.style.setProperty("--tx", `${(hx * 8).toFixed(2)}deg`);
+      wrap.style.setProperty("--ty", `${(-hy * 8).toFixed(2)}deg`);
+      wrap.style.setProperty("--sc", `${(1 + a * 0.02).toFixed(3)}`);
 
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
@@ -208,14 +218,11 @@ export default function ThreedCard({
       ro.disconnect();
       pgeo.dispose();
       ptsMat.dispose();
-      border.geometry.dispose();
-      (border.material as THREE.Material).dispose();
-      sheenA.geometry.dispose();
-      (sheenA.material as THREE.Material).dispose();
-      sheenB.geometry.dispose();
-      (sheenB.material as THREE.Material).dispose();
-      sheenC.geometry.dispose();
-      (sheenC.material as THREE.Material).dispose();
+      [ring, spot, band, aurA, aurB].forEach((m) => {
+        m.geometry.dispose();
+        (m.material as THREE.Material & { map?: THREE.Texture }).map?.dispose();
+        (m.material as THREE.Material).dispose();
+      });
       renderer.dispose();
     };
   }, [engaged]);
@@ -223,14 +230,30 @@ export default function ThreedCard({
   return (
     <div
       ref={wrapRef}
-      className={`relative overflow-hidden ${className || ""}`}
+      className={`relative overflow-hidden rounded-xl ${className || ""}`}
       style={{
-        transform: "perspective(1000px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg))",
-        transition: "transform 90ms linear",
+        transform: "perspective(1100px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) scale(var(--sc, 1))",
+        transition: "transform 90ms linear, box-shadow 250ms ease",
         willChange: "transform",
+        boxShadow: "0 12px 40px -20px rgba(0,0,0,0.7)",
+      }}
+      onPointerEnter={() => {
+        const w = wrapRef.current;
+        if (w)
+          w.style.boxShadow =
+            "0 30px 90px -20px rgba(37,99,235,0.6), 0 0 70px -8px rgba(34,211,238,0.4), 0 0 0 1px rgba(147,197,253,0.25)";
+      }}
+      onPointerLeave={() => {
+        const w = wrapRef.current;
+        if (w) w.style.boxShadow = "0 12px 40px -20px rgba(0,0,0,0.7)";
       }}
     >
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }} aria-hidden />
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={{ zIndex: 20 }}
+        aria-hidden
+      />
       <div className="relative" style={{ zIndex: 10 }}>
         {children}
       </div>
