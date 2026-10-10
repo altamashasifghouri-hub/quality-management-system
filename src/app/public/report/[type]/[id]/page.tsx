@@ -278,7 +278,7 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
                 {obs.map((o, i) => {
                   const items: EvidenceItem[] = buildEvidenceItems(Array.isArray(o.pictures) ? o.pictures : []);
                   return (
-                    <div key={o.key || i} className="bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5">
+                    <ThreedCard key={o.key || i} className="bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className="text-xs font-mono text-blue-200/50">#{String(i + 1).padStart(2, "0")}</span>
                         {o.area ? <span className="text-[10px] text-blue-200/50">{o.area}</span> : null}
@@ -290,7 +290,7 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
                           <EvidenceGallery items={items} label="Observation photo" />
                         </div>
                       ) : null}
-                    </div>
+                    </ThreedCard>
                   );
                 })}
               </div>
