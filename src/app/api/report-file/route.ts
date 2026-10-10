@@ -27,8 +27,32 @@ async function isKnownPublicFile(fileId: string): Promise<boolean> {
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
+  const kind = req.nextUrl.searchParams.get("kind");
   if (!id || !/^[A-Za-z0-9_-]{10,}$/.test(id)) {
     return new NextResponse("Missing or invalid file id", { status: 400 });
+  }
+
+  if (kind === "image") {
+    try {
+      const upstream = await fetch(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w800`, {
+        redirect: "follow",
+        cache: "force-cache",
+      });
+      if (!upstream.ok || !upstream.body) {
+        return new NextResponse("Could not load image", { status: 502 });
+      }
+      const ct = upstream.headers.get("content-type") || "image/jpeg";
+      return new NextResponse(upstream.body, {
+        status: 200,
+        headers: {
+          "Content-Type": ct,
+          "Cache-Control": "public, max-age=86400",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch {
+      return new NextResponse("Could not load image", { status: 502 });
+    }
   }
 
   if (!(await isKnownPublicFile(id))) {
