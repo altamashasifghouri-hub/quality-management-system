@@ -33,13 +33,16 @@ const formatDate = (d?: string | null) =>
 
 export default async function PublicView() {
   const supabase = await createClient();
-  const [{ data: branches }, { data: auditReports }, { data: visitRecords }] = await Promise.all([
+  const [{ data: branches }, { data: auditReports }, { data: isoPlans }, { data: schedules }, { data: visitRecords }] = await Promise.all([
     supabase.from("branches").select("id,name"),
-    supabase.from("audit_reports").select("id,audit_id,title,document_number,branch_id,report_date,prepared_by,findings,pdf_url,created_at").order("created_at", { ascending: false }),
-    supabase.from("visit_records").select("id,branch_id,visit_date,purpose,visited_by,status,pdf_url,created_at").order("visit_date", { ascending: false }),
+    supabase.from("audit_reports").select("id,audit_id,title,document_number,branch_id,report_date,prepared_by,findings,pdf_url,pdf_public_id,created_at").order("created_at", { ascending: false }),
+    supabase.from("audit_plans").select("id,schedule_id,title,document_number,date_of_plan,prepared_by,overall_result,findings,pdf_url,pdf_public_id,created_at").order("created_at", { ascending: false }),
+    supabase.from("audit_schedules").select("id,branch_id"),
+    supabase.from("visit_records").select("id,branch_id,visit_date,purpose,visited_by,status,pdf_url,pdf_public_id,created_at").order("visit_date", { ascending: false }),
   ]);
 
   const branchName = new Map<string, string>((branches || []).map((b: any) => [b.id, b.name]));
+  const schedBranch = new Map<string, string>((schedules || []).map((s: any) => [s.id, s.branch_id]));
   const branchColor = new Map<string, string>(
     (branches || []).map((b: any, i: number) => [
       b.id,
@@ -57,7 +60,25 @@ export default async function PublicView() {
     prepared_by: r.prepared_by,
     findings: Array.isArray(r.findings) ? r.findings : [],
     pdf_url: r.pdf_url || null,
+    pdf_public_id: r.pdf_public_id || null,
   }));
+
+  const isoReports = (isoPlans || []).map((p: any) => {
+    const branchId = schedBranch.get(p.schedule_id) || "";
+    return {
+      id: p.id,
+      title: p.title,
+      document_number: p.document_number,
+      branch_id: branchId,
+      branch_name: branchName.get(branchId) || "—",
+      report_date: p.date_of_plan,
+      prepared_by: p.prepared_by,
+      overall_result: p.overall_result,
+      findings: Array.isArray(p.findings) ? p.findings : [],
+      pdf_url: p.pdf_url || null,
+      pdf_public_id: p.pdf_public_id || null,
+    };
+  });
 
   const visits = (visitRecords || []).map((r: any) => ({
     id: r.id,
@@ -68,9 +89,11 @@ export default async function PublicView() {
     visited_by: r.visited_by,
     status: r.status,
     pdf_url: r.pdf_url || null,
+    pdf_public_id: r.pdf_public_id || null,
   }));
 
   const totalFindings = reports.reduce((s, r) => s + r.findings.length, 0);
+  const isoFindings = isoReports.reduce((s, r) => s + r.findings.length, 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
@@ -103,7 +126,7 @@ export default async function PublicView() {
             Read-only access to published audit reports and visit evidence reports.
             {reports.length > 0 && (
               <span className="block text-base mt-2">
-                {reports.length} audit report{reports.length === 1 ? "" : "s"} with {totalFindings} finding{totalFindings === 1 ? "" : "s"} · {visits.length} visit report{visits.length === 1 ? "" : "s"} available.
+                {reports.length} audit report{reports.length === 1 ? "" : "s"} with {totalFindings} finding{totalFindings === 1 ? "" : "s"} · {isoReports.length} ISO report{isoReports.length === 1 ? "" : "s"} with {isoFindings} finding{isoFindings === 1 ? "" : "s"} · {visits.length} visit report{visits.length === 1 ? "" : "s"} available.
               </span>
             )}
           </p>
@@ -154,18 +177,82 @@ export default async function PublicView() {
                       })}
                     </div>
                   )}
-                  {p.pdf_url ? (
-                    <a
-                      href={p.pdf_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  {p.pdf_public_id ? (
+                    <Link
+                      href={`/public/report/audit/${p.id}`}
                       className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-blue-600/25"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6V3m0 0L4.5 6m3-3 3 3m7.5 3H21v4.5" />
                       </svg>
                       View Audit Report
-                    </a>
+                    </Link>
+                  ) : (
+                    <span className="mt-auto px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-blue-200/50">
+                      PDF not published yet
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="mb-14">
+          <h2 className="text-xl font-semibold text-white mb-5 flex items-center gap-3">
+            <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            ISO 9001 Reports
+          </h2>
+          {isoReports.length === 0 ? (
+            <p className="text-blue-200/60">No ISO 9001 reports have been published yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {isoReports.map((p) => (
+                <div
+                  key={p.id}
+                  className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-xl p-5 flex flex-col gap-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className={`inline-block px-2 py-0.5 text-[10px] rounded-full border mb-2 ${branchColor.get(p.branch_id) || "bg-white/10 text-white/70 border-white/20"}`}>
+                        {p.branch_name}
+                      </span>
+                      <h3 className="text-white font-semibold leading-snug">{p.title}</h3>
+                    </div>
+                    {p.document_number && (
+                      <span className="shrink-0 text-[11px] font-mono text-blue-200/60 border border-blue-400/25 bg-blue-500/10 rounded px-2 py-0.5">
+                        {p.document_number}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-blue-200/60">
+                    {formatDate(p.report_date) || ""}
+                    {p.prepared_by ? ` · Prepared by ${p.prepared_by}` : ""}
+                  </p>
+                  {p.findings.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(["Critical", "High", "Medium", "Low"] as const).map((sev) => {
+                        const n = computeSummary(p.findings)[sev];
+                        return n > 0 ? (
+                          <span key={sev} className={`px-2 py-0.5 text-[10px] rounded-full border ${SEV_STYLES[sev]}`}>
+                            {sev} {n}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                  {p.pdf_public_id ? (
+                    <Link
+                      href={`/public/report/iso/${p.id}`}
+                      className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-blue-600/25"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6V3m0 0L4.5 6m3-3 3 3m7.5 3H21v4.5" />
+                      </svg>
+                      View ISO Report
+                    </Link>
                   ) : (
                     <span className="mt-auto px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-blue-200/50">
                       PDF not published yet
@@ -210,15 +297,13 @@ export default async function PublicView() {
                     {p.visited_by ? `${p.visited_by} · ` : ""}
                     {formatDate(p.visit_date) || ""}
                   </p>
-                  {p.pdf_url ? (
-                    <a
-                      href={p.pdf_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  {p.pdf_public_id ? (
+                    <Link
+                      href={`/public/report/visit/${p.id}`}
                       className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all duration-200 shadow-lg shadow-blue-600/25"
                     >
                       View Visit Report
-                    </a>
+                    </Link>
                   ) : (
                     <span className="mt-auto px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-center text-xs text-blue-200/50">
                       PDF not published yet
