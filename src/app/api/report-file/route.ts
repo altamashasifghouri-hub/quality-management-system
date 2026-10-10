@@ -57,6 +57,42 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  if (kind === "video" || kind === "audio") {
+    try {
+      const range = req.headers.get("range");
+      const fh: HeadersInit = {};
+      if (range) fh.Range = range;
+      const upstream = await fetch(`https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download`, {
+        headers: fh,
+        redirect: "follow",
+        cache: "no-store",
+      });
+      if (!upstream.ok || !upstream.body) {
+        return new NextResponse("Could not load media", { status: 502 });
+      }
+      const ct =
+        upstream.headers.get("content-type") ||
+        (kind === "video" ? "video/mp4" : "audio/mpeg");
+      const resHeaders = new Headers({
+        "Content-Type": ct,
+        "Content-Disposition": dl ? 'attachment; filename="media"' : "inline",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+      });
+      const cr = upstream.headers.get("content-range");
+      const cl = upstream.headers.get("content-length");
+      if (cr) resHeaders.set("Content-Range", cr);
+      if (cl) resHeaders.set("Content-Length", cl);
+      return new NextResponse(upstream.body, {
+        status: upstream.status === 206 ? 206 : 200,
+        headers: resHeaders,
+      });
+    } catch {
+      return new NextResponse("Could not load media", { status: 502 });
+    }
+  }
+
   if (!(await isKnownPublicFile(id))) {
     return new NextResponse("Report not found", { status: 404 });
   }

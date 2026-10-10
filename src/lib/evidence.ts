@@ -53,6 +53,53 @@ export function evidenceCaption(url: string): string {
   return "Click for full view";
 }
 
+export interface EvidenceItem {
+  kind: "image" | "video" | "audio";
+  thumb: string;
+  src: string;
+  file: string;
+  caption: string;
+}
+
+export function buildEvidenceItems(urls: unknown[]): EvidenceItem[] {
+  const items: EvidenceItem[] = [];
+  for (const raw of urls || []) {
+    if (typeof raw !== "string" || !raw) continue;
+    const url = raw;
+    if (!url.startsWith("https://drive.google.com/")) continue;
+    const fileId = driveFileIdOf(url);
+    if (isAudioEvidence(url)) {
+      if (!fileId) continue;
+      items.push({
+        kind: "audio",
+        thumb: AUDIO_POSTER,
+        src: `/api/report-file?kind=audio&id=${encodeURIComponent(fileId)}`,
+        file: url,
+        caption: "Voice note — press play",
+      });
+    } else if (isVideoEvidence(url)) {
+      if (!fileId) continue;
+      const poster = videoPosterId(url) || fileId;
+      items.push({
+        kind: "video",
+        thumb: `/api/report-file?kind=image&id=${encodeURIComponent(poster)}`,
+        src: `/api/report-file?kind=video&id=${encodeURIComponent(fileId)}`,
+        file: url,
+        caption: "Video — click to play",
+      });
+    } else if (fileId) {
+      items.push({
+        kind: "image",
+        thumb: `/api/report-file?kind=image&id=${encodeURIComponent(fileId)}`,
+        src: `/api/report-file?kind=image&id=${encodeURIComponent(fileId)}`,
+        file: url,
+        caption: "Evidence photo",
+      });
+    }
+  }
+  return items;
+}
+
 const MAX_MEDIA_BYTES = 500 * 1024 * 1024;
 
 export function mediaUploadError(file: File): string {

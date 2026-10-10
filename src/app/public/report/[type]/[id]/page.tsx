@@ -1,6 +1,7 @@
 import Link from "next/link";
 import QmsBrand from "@/components/QmsBrand";
 import EvidenceGallery from "@/components/EvidenceGallery";
+import { buildEvidenceItems, type EvidenceItem } from "@/lib/evidence";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -23,17 +24,6 @@ function asText(v: unknown): string {
   return typeof v === "string" && v.trim() ? v.trim() : "";
 }
 
-function toProxyImg(u?: unknown): string | null {
-  if (typeof u !== "string" || !u) return null;
-  try {
-    const id = new URL(u).searchParams.get("id");
-    if (id && /^[A-Za-z0-9_-]{10,}$/.test(id)) return `/api/report-file?kind=image&id=${encodeURIComponent(id)}`;
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
 interface Finding {
   type?: string;
   clause?: string;
@@ -48,7 +38,7 @@ interface Finding {
 function FindingCard({ f, n }: { f: Finding; n: number }) {
   const sev = SEVERITY_ORDER.find((s) => s === f.type) || f.type || "Medium";
   const resolved = !!f.resolved;
-  const ev = (f.evidence || []).map(toProxyImg).filter(Boolean) as string[];
+  const items: EvidenceItem[] = buildEvidenceItems(f.evidence || []);
   return (
     <div className={`bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5 ring-1 ${resolved ? "ring-emerald-400/20" : "ring-amber-400/10"}`}>
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -77,9 +67,9 @@ function FindingCard({ f, n }: { f: Finding; n: number }) {
           {f.recommendation}
         </p>
       ) : null}
-      {ev.length > 0 ? (
+      {items.length > 0 ? (
         <div className="mt-4">
-          <EvidenceGallery images={ev} label="Evidence" />
+          <EvidenceGallery items={items} label="Evidence" />
         </div>
       ) : null}
     </div>
@@ -285,7 +275,7 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
               <h2 className="text-sm font-semibold text-blue-200 uppercase tracking-wider mb-4">Observations</h2>
               <div className="space-y-4">
                 {obs.map((o, i) => {
-                  const pics = (Array.isArray(o.pictures) ? o.pictures : []).map(toProxyImg).filter(Boolean) as string[];
+                  const items: EvidenceItem[] = buildEvidenceItems(Array.isArray(o.pictures) ? o.pictures : []);
                   return (
                     <div key={o.key || i} className="bg-white/[0.04] border border-white/10 rounded-xl p-4 sm:p-5">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -294,9 +284,9 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
                         {o.outcome ? <span className="px-2 py-0.5 text-[10px] rounded-full border bg-blue-500/15 text-blue-200 border-blue-400/30">{o.outcome}</span> : null}
                       </div>
                       <p className="text-sm text-white/90 leading-relaxed whitespace-pre-line">{o.context}</p>
-                      {pics.length > 0 ? (
+                      {items.length > 0 ? (
                         <div className="mt-3">
-                          <EvidenceGallery images={pics} label="Observation photo" />
+                          <EvidenceGallery items={items} label="Observation photo" />
                         </div>
                       ) : null}
                     </div>
