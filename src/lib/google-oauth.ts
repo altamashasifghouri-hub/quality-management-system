@@ -28,6 +28,23 @@ export function googleAuthUrl(state: string) {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
+export function gmailAuthUrl(state: string) {
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
+    redirect_uri: googleRedirectUri(),
+    response_type: "code",
+    scope: [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "openid",
+    ].join(" "),
+    access_type: "offline",
+    prompt: "consent",
+    state,
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
 export async function exchangeCode(code: string) {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -56,7 +73,11 @@ export async function refreshAccessToken(refreshToken: string) {
     }).toString(),
   });
   if (!res.ok) return null;
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function revokeToken(refreshToken: string) {

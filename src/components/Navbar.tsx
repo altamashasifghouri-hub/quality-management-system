@@ -3,18 +3,52 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 
+interface TodayItem {
+  branch: string;
+  auditor: string;
+  detail: string;
+  status: string;
+}
+
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [userName, setUserName] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
+  const [todayOpen, setTodayOpen] = useState(false);
+  const [todayItems, setTodayItems] = useState<TodayItem[]>([]);
+  const [todayLoading, setTodayLoading] = useState(false);
+  const todayRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (todayRef.current && !todayRef.current.contains(e.target as Node)) setTodayOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setTodayLoading(true);
+      try {
+        const d = new Date();
+        const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const res = await fetch(`/api/today-schedule?date=${today}`, { cache: "no-store" });
+        const json = await res.json();
+        if (active) setTodayItems(Array.isArray(json?.items) ? json.items : []);
+      } catch {
+        if (active) setTodayItems([]);
+      } finally {
+        if (active) setTodayLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [todayOpen]);
 
   useEffect(() => {
     (async () => {
@@ -37,6 +71,57 @@ export default function Navbar() {
           <span className="text-white font-semibold text-sm sm:text-base truncate">Quality Management System</span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="relative" ref={todayRef}>
+            <button
+              onClick={() => setTodayOpen(!todayOpen)}
+              className={`inline-flex items-center gap-2 px-2.5 sm:px-4 py-2 text-sm font-medium rounded-lg border border-white/10 transition-all duration-200 ${
+                todayOpen ? "text-white bg-white/10" : "text-white/70 hover:text-white bg-white/5 hover:bg-white/10"
+              }`}
+              aria-label="Today's auditors"
+            >
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+              </svg>
+              <span className="hidden sm:inline">Today</span>
+              {todayItems.length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-500 text-[10px] font-semibold text-white">
+                  {todayItems.length}
+                </span>
+              )}
+            </button>
+
+            {todayOpen && (
+              <div className="absolute right-0 mt-2 w-80 max-w-[85vw] bg-blue-950/95 backdrop-blur-md border border-blue-500/25 rounded-xl shadow-2xl overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-white">Today&rsquo;s Audits</span>
+                  <span className="text-xs text-blue-200/60">
+                    {new Date().toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                </div>
+                <div className="max-h-80 overflow-y-auto py-1">
+                  {todayLoading ? (
+                    <p className="px-4 py-6 text-sm text-blue-200/60 text-center">Loading&hellip;</p>
+                  ) : todayItems.length === 0 ? (
+                    <p className="px-4 py-6 text-sm text-blue-200/60 text-center">No audits scheduled for today.</p>
+                  ) : (
+                    todayItems.map((it, i) => (
+                      <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors">
+                        <span className="mt-0.5 shrink-0 px-2 py-0.5 text-[10px] font-semibold rounded-full border bg-blue-500/15 text-blue-200 border-blue-400/30">
+                          Audit
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm text-white font-medium leading-snug break-words">{it.branch}</p>
+                          <p className="text-xs text-blue-200/70 leading-snug break-words">{it.auditor}</p>
+                          {it.detail ? <p className="text-[11px] text-blue-200/40 mt-0.5 break-words">{it.detail}</p> : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="relative" ref={ref}>
             <button
               onClick={() => setOpen(!open)}

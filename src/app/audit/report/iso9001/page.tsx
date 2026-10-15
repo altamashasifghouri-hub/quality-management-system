@@ -9,7 +9,7 @@ import { driveErrorMessage } from "@/lib/drive-error";
 import { jsPDF } from "jspdf";
 import { loadPdfImage, imageDims } from "@/lib/pdf-image";
 import autoTable from "jspdf-autotable";
-import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isAudioEvidence, isMediaEvidence, putFileToDrive, mediaUploadError, captureVideoPoster, buildAudioEvidence, buildVideoEvidence } from "@/lib/evidence";
+import { evidenceCaption, evidenceDisplayUrl, evidenceLinkUrl, isAudioEvidence, isMediaEvidence, putFileToDrive, mediaUploadError, captureVideoPoster, buildAudioEvidence, buildVideoEvidence, LARGE_UPLOAD_THRESHOLD, uploadLargeFile } from "@/lib/evidence";
 import EvidenceThumb from "@/components/EvidenceThumb";
 
 interface Finding { department: string; clause?: string; type: string; detail: string; recommendation?: string; evidence?: string[]; resolved?: boolean; resolved_at?: string | null; timeline?: number; sop?: string; sopClause?: string; }
@@ -360,16 +360,26 @@ export default function Iso9001Report() {
         evidenceUrl = isAudio ? buildAudioEvidence(finalId) : buildVideoEvidence(finalId, posterFileId);
       } else {
         flashEv(planId, idx, "Uploading picture…");
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          return fail(driveErrorMessage(errJson, "Picture upload failed."));
+        if (file.size > LARGE_UPLOAD_THRESHOLD) {
+          setUploadPct(0);
+          try {
+            const up = await uploadLargeFile("evidence", file, setUploadPct);
+            evidenceUrl = up.url;
+          } finally {
+            setUploadPct(null);
+          }
+        } else {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            return fail(driveErrorMessage(errJson, "Picture upload failed."));
+          }
+          const json = await res.json();
+          if (!json.url) return fail("Picture upload failed.");
+          evidenceUrl = json.url;
         }
-        const json = await res.json();
-        if (!json.url) return fail("Picture upload failed.");
-        evidenceUrl = json.url;
       }
 
       const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: [...(f.evidence || []), evidenceUrl] } : f));

@@ -10,8 +10,10 @@ import {
   buildAudioEvidence,
   buildVideoEvidence,
   captureVideoPoster,
+  LARGE_UPLOAD_THRESHOLD,
   mediaUploadError,
   putFileToDrive,
+  uploadLargeFile,
 } from "@/lib/evidence";
 import EvidenceThumb from "@/components/EvidenceThumb";
 
@@ -376,16 +378,26 @@ export default function AuditFindings() {
         evidenceUrl = isAudio ? buildAudioEvidence(finalId) : buildVideoEvidence(finalId, posterFileId);
       } else {
         flashEv(planId, idx, "Uploading picture…");
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          return fail(driveErrorMessage(errJson, "Picture upload failed."));
+        if (file.size > LARGE_UPLOAD_THRESHOLD) {
+          setUploadPct(0);
+          try {
+            const up = await uploadLargeFile("evidence", file, setUploadPct);
+            evidenceUrl = up.url;
+          } finally {
+            setUploadPct(null);
+          }
+        } else {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            return fail(driveErrorMessage(errJson, "Picture upload failed."));
+          }
+          const json = await res.json();
+          if (!json.url) return fail("Picture upload failed.");
+          evidenceUrl = json.url;
         }
-        const json = await res.json();
-        if (!json.url) return fail("Picture upload failed.");
-        evidenceUrl = json.url;
       }
 
       const updated = plan.findings.map((f, i) => (i === idx ? { ...f, evidence: [...(f.evidence || []), evidenceUrl] } : f));

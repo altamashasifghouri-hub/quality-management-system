@@ -1,6 +1,7 @@
 import Link from "next/link";
 import QmsBrand from "@/components/QmsBrand";
 import EvidenceGallery from "@/components/EvidenceGallery";
+import PublicTodayAudit from "@/components/PublicTodayAudit";
 import ThreedCard from "@/components/ThreedCard";
 import { buildEvidenceItems, type EvidenceItem } from "@/lib/evidence";
 import { createClient } from "@/lib/supabase/server";
@@ -100,9 +101,12 @@ export default async function PublicReportView({ params }: { params: Promise<{ t
           <QmsBrand compact />
           <span className="text-white font-semibold">Quality Management System</span>
         </Link>
-        <Link href="/auth/signin" className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all duration-200">
-          Sign In
-        </Link>
+        <div className="flex items-center gap-3">
+          <PublicTodayAudit />
+          <Link href="/auth/signin" className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all duration-200">
+            Sign In
+          </Link>
+        </div>
       </div>
     </nav>
   );

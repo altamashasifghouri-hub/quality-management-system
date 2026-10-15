@@ -37,6 +37,9 @@ export async function updateSession(request: NextRequest) {
     !user &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     !request.nextUrl.pathname.startsWith("/public") &&
+    !request.nextUrl.pathname.startsWith("/api/report-file") &&
+    !request.nextUrl.pathname.startsWith("/api/today-schedule") &&
+    !request.nextUrl.pathname.startsWith("/api/gmail/public") &&
     request.nextUrl.pathname !== "/"
   ) {
     const url = request.nextUrl.clone();

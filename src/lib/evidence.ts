@@ -100,11 +100,13 @@ export function buildEvidenceItems(urls: unknown[]): EvidenceItem[] {
   return items;
 }
 
-const MAX_MEDIA_BYTES = 500 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024 * 1024;
+
+export const LARGE_UPLOAD_THRESHOLD = 4 * 1024 * 1024;
 
 export function mediaUploadError(file: File): string {
   if (file.type.startsWith("image/")) return "";
-  if (file.size > MAX_MEDIA_BYTES) return "This file must be 500MB or smaller.";
+  if (file.size > MAX_MEDIA_BYTES) return "This file must be 5GB or smaller.";
   return "";
 }
 
@@ -146,6 +148,40 @@ export function putFileToDrive(
     xhr.onabort = () => reject(new Error("Upload was interrupted."));
     xhr.send(file);
   });
+}
+
+export async function uploadLargeFile(
+  folderKind: string,
+  file: File,
+  onProgress?: (pct: number) => void
+): Promise<{ url: string; fileId: string }> {
+  const mime = file.type || "application/octet-stream";
+  const initRes = await fetch("/api/drive-resumable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "init", name: file.name, mime, size: file.size, folderKind }),
+  });
+  const initJson = await initRes.json().catch(() => ({}));
+  if (!initRes.ok || !initJson.uploadUrl) throw new Error(initJson.error || "Could not start the upload.");
+
+  let putId = "";
+  try {
+    const r = await putFileToDrive(initJson.uploadUrl, file, mime, onProgress);
+    putId = r?.id || "";
+  } catch {
+    // Drive omits CORS headers on the resumable PUT response, so the browser can
+    // fail to read a response even when the bytes landed. "finish" re-checks by nonce.
+  }
+
+  const finRes = await fetch("/api/drive-resumable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "finish", fileId: putId, nonce: initJson.nonce, since: initJson.since, name: file.name, mime }),
+  });
+  const finJson = await finRes.json().catch(() => ({}));
+  const finalId = finJson.fileId || putId;
+  if (!finRes.ok || !finalId) throw new Error(finJson.error || "Uploaded, but it could not be found in Drive.");
+  return { url: finJson.url, fileId: finalId };
 }
 
 export async function captureVideoPoster(file: File): Promise<Blob | null> {

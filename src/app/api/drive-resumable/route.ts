@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getGoogleAccessToken, supabaseFromCookies } from "@/lib/google-oauth";
 import { driveFolderId } from "@/lib/drive";
 
-const MAX_BYTES = 500 * 1024 * 1024;
+const MAX_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 
 export async function POST(req: Request) {
   const supabase = await supabaseFromCookies();
@@ -27,9 +27,9 @@ export async function POST(req: Request) {
     const size = Number(body.size || 0);
     const kind = String(body.folderKind || "evidence");
     if (!name) return NextResponse.json({ error: "Missing file name." }, { status: 400 });
-    if (!/^(image|video|audio)\//.test(mime)) return NextResponse.json({ error: "Only images, videos and audio can be uploaded." }, { status: 400 });
+    if (!/^(image|video|audio|application|text)\//.test(mime) && !/\.pdf$/i.test(name)) return NextResponse.json({ error: "Unsupported file type." }, { status: 400 });
     if (!Number.isFinite(size) || size <= 0) return NextResponse.json({ error: "Invalid file size." }, { status: 400 });
-    if (size > MAX_BYTES) return NextResponse.json({ error: "File must be 500MB or smaller." }, { status: 400 });
+    if (size > MAX_BYTES) return NextResponse.json({ error: "File must be 5GB or smaller." }, { status: 400 });
     const folderId = driveFolderId(kind);
     if (!folderId) return NextResponse.json({ error: "Google Drive folder is not configured." }, { status: 500 });
 

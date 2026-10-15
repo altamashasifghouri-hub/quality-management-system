@@ -10,6 +10,7 @@ import JSZip from "jszip";
 import { loadPdfImage } from "@/lib/pdf-image";
 import { deleteDriveFileByUrl } from "@/lib/drive-file";
 import { driveErrorMessage } from "@/lib/drive-error";
+import { LARGE_UPLOAD_THRESHOLD, uploadLargeFile } from "@/lib/evidence";
 
 interface CapaFinding {
   department: string;
@@ -267,6 +268,15 @@ export default function CapaPage() {
     setSavingKey(`${planId}::${idx}`);
     for (const file of Array.from(files)) {
       if (!file.type.startsWith("image/")) { showErr(`${file.name} is not an image.`); continue; }
+      if (file.size > LARGE_UPLOAD_THRESHOLD) {
+        try {
+          const up = await uploadLargeFile("evidence", file);
+          if (up.url) urls.push(up.url);
+        } catch (e: any) {
+          showErr(e?.message || `${file.name} upload failed.`);
+        }
+        continue;
+      }
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });

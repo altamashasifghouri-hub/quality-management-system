@@ -17,8 +17,10 @@ import {
   evidenceDisplayUrl,
   evidenceLinkUrl,
   isMediaEvidence,
+  LARGE_UPLOAD_THRESHOLD,
   mediaUploadError,
   putFileToDrive,
+  uploadLargeFile,
 } from "@/lib/evidence";
 import EvidenceThumb from "@/components/EvidenceThumb";
 
@@ -578,6 +580,18 @@ export default function VisitManagementPage() {
       }
       try {
         if (isImage) {
+          if (file.size > LARGE_UPLOAD_THRESHOLD) {
+            setOUploadPct(0);
+            try {
+              const up = await uploadLargeFile("evidence", file, setOUploadPct);
+              if (up.url) urls.push(up.url);
+            } catch (e: any) {
+              showErr(e?.message || `${file.name} upload failed.`);
+            } finally {
+              setOUploadPct(null);
+            }
+            continue;
+          }
           const fd = new FormData();
           fd.append("file", file);
           const res = await fetch("/api/drive-upload-image", { method: "POST", body: fd });
