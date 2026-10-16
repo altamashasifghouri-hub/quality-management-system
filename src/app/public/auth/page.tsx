@@ -1,9 +1,8 @@
 ﻿"use client";
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 function PinForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/public";
   const [pin, setPin] = useState("");
@@ -15,10 +14,11 @@ function PinForm() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/settings/public-pin/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
+      const res = await fetch("/api/settings/public-pin/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }), credentials: "same-origin" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Invalid PIN");
-      router.push(next.startsWith("/") ? next : "/public");
+      const dest = next.startsWith("/") ? next : "/public";
+      window.location.assign(dest);
     } catch (e: any) {
       setError(e.message || "Failed");
     } finally {

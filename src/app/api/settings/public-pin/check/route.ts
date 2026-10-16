@@ -12,11 +12,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const pin = String(body.pin || "").trim();
-    const { data } = await supabase.from("settings").select("public_pin_hash").eq("id", 1).maybeSingle();
+    const { data } = await supabase.from("settings").select("public_pin_hash, public_pin_token").eq("id", 1).maybeSingle();
     if (!data?.public_pin_hash) return NextResponse.json({ ok: true });
     if (hashPin(pin) === data.public_pin_hash) {
       const res = NextResponse.json({ ok: true });
-      res.cookies.set("qms_public_pin", pin, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 30, path: "/" });
+      res.cookies.set("qms_public_pin", data.public_pin_token || "", { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 30, path: "/" });
       return res;
     }
     return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });

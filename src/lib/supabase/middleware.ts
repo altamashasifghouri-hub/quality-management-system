@@ -55,10 +55,10 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/public") &&
     !request.nextUrl.pathname.startsWith("/public/auth")
   ) {
-    const pinEnabled = await isPublicPinEnabled();
-    if (pinEnabled) {
-      const pin = request.cookies.get("qms_public_pin")?.value;
-      if (!pin) {
+    const token = await getPublicPinToken();
+    if (token) {
+      const cookie = request.cookies.get("qms_public_pin")?.value;
+      if (cookie !== token) {
         const url = request.nextUrl.clone();
         url.pathname = "/public/auth";
         url.searchParams.set("next", request.nextUrl.pathname);
@@ -66,22 +66,45 @@ export async function updateSession(request: NextRequest) {
       }
     }
   }
+
+  // Public data APIs used by the public portal must also respect the PIN gate
+  if (
+    !user &&
+    (request.nextUrl.pathname.startsWith("/api/gmail/public") ||
+      request.nextUrl.pathname.startsWith("/api/today-schedule") ||
+      request.nextUrl.pathname.startsWith("/api/report-file"))
+  ) {
+    const token = await getPublicPinToken();
+    if (token) {
+      const cookie = request.cookies.get("qms_public_pin")?.value;
+      if (cookie !== token) {
+        return NextResponse.json({ error: "PIN required" }, { status: 401 });
+      }
+    }
+  }
   return supabaseResponse;
 }
 
-async function isPublicPinEnabled(): Promise<boolean> {
+async function getPublicPinToken(): Promise<string | null> {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !anon) return false;
-    const res = await fetch(`${url}/rest/v1/settings?id=eq.1&select=public_pin_hash`, {
-      headers: { apikey: anon, Authorization: `Bearer ${anon}` },
-      cache: "no-store",
-    });
-    if (!res.ok) return false;
-    const rows = await res.json();
-    return Boolean(rows?.[0]?.public_pin_hash);
+    if (!url || !anon) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    try {
+      const res = await fetch(`${url}/rest/v1/settings?id=eq.1&select=public_pin_token`, {
+        headers: { apikey: anon, Authorization: `Bearer ${anon}` },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      const rows = await res.json();
+      return rows?.[0]?.public_pin_token ?? null;
+    } finally {
+      clearTimeout(timer);
+    }
   } catch {
-    return false;
+    return null;
   }
 }

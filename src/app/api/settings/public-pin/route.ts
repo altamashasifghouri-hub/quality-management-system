@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const action = String(body.action || "set");
 
     if (action === "clear") {
-      await supabase.from("settings").upsert({ id: 1, public_pin_hash: null, updated_at: new Date().toISOString() }, { onConflict: "id" });
+      await supabase.from("settings").upsert({ id: 1, public_pin_hash: null, public_pin_token: null, updated_at: new Date().toISOString() }, { onConflict: "id" });
       return NextResponse.json({ ok: true });
     }
 
@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
     }
 
     const public_pin_hash = hashPin(pin);
-    await supabase.from("settings").upsert({ id: 1, public_pin_hash, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    const public_pin_token = crypto.randomBytes(32).toString("hex");
+    await supabase.from("settings").upsert({ id: 1, public_pin_hash, public_pin_token, updated_at: new Date().toISOString() }, { onConflict: "id" });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Failed" }, { status: 500 });
