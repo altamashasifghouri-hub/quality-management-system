@@ -29,6 +29,8 @@ export default function Settings() {
   const [publicPin, setPublicPin] = useState("");
   const [pinEnabled, setPinEnabled] = useState(false);
   const [pinSaving, setPinSaving] = useState(false);
+  const [pinMsg, setPinMsg] = useState("");
+  const [pinErr, setPinErr] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -105,22 +107,35 @@ export default function Settings() {
   }
 
   async function handleSetPublicPin() {
-    if (!/^\d{4,6}$/.test(publicPin)) return setError("PIN must be 4-6 digits");
-    setPinSaving(true); setError(""); setMessage("");
-    const res = await fetch("/api/settings/public-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: publicPin }) });
-    const j = await res.json();
-    setPinSaving(false);
-    if (!res.ok) return setError(j.error || "Failed");
-    setPinEnabled(true); setMessage("Public PIN set.");
-    setPublicPin("");
+    setPinMsg(""); setPinErr("");
+    if (!/^\d{4,6}$/.test(publicPin)) return setPinErr("PIN must be 4-6 digits (numbers only).");
+    setPinSaving(true);
+    try {
+      const res = await fetch("/api/settings/public-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: publicPin }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`);
+      setPinEnabled(true); setPinMsg("PIN set. Public visitors will now be asked for it.");
+      setPublicPin("");
+    } catch (e: any) {
+      setPinErr(e?.message || "Failed to set PIN");
+    } finally {
+      setPinSaving(false);
+    }
   }
 
   async function handleClearPublicPin() {
-    setPinSaving(true); setError(""); setMessage("");
-    const res = await fetch("/api/settings/public-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "clear" }) });
-    setPinSaving(false);
-    if (!res.ok) return setError("Failed");
-    setPinEnabled(false); setMessage("Public PIN cleared.");
+    setPinMsg(""); setPinErr("");
+    setPinSaving(true);
+    try {
+      const res = await fetch("/api/settings/public-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "clear" }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`);
+      setPinEnabled(false); setPinMsg("PIN cleared. Public portal is now open.");
+    } catch (e: any) {
+      setPinErr(e?.message || "Failed to clear PIN");
+    } finally {
+      setPinSaving(false);
+    }
   }
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -212,9 +227,9 @@ export default function Settings() {
                   <input
                     type="password"
                     inputMode="numeric"
-                    pattern="[0-9]{4,6}"
+                    maxLength={6}
                     value={publicPin}
-                    onChange={(e) => setPublicPin(e.target.value)}
+                    onChange={(e) => setPublicPin(e.target.value.replace(/\D/g, ""))}
                     placeholder="Enter PIN (4-6 digits)"
                     className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -236,6 +251,8 @@ export default function Settings() {
                   Clear PIN
                 </button>
                 <p className="text-xs text-blue-200/60">{pinEnabled ? "PIN is currently set." : "No PIN set - public portal is open."}</p>
+                {pinMsg && <p className="text-xs text-green-300">{pinMsg}</p>}
+                {pinErr && <p className="text-xs text-red-300">{pinErr}</p>}
               </div>
             </div>
 
