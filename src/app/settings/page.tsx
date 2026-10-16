@@ -26,6 +26,9 @@ export default function Settings() {
   const [hrName, setHrName] = useState("");
   const [ceoName, setCeoName] = useState("");
   const [companySaving, setCompanySaving] = useState(false);
+  const [publicPin, setPublicPin] = useState("");
+  const [pinEnabled, setPinEnabled] = useState(false);
+  const [pinSaving, setPinSaving] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -47,7 +50,7 @@ export default function Settings() {
         supabase.from("settings").insert({ id: 1, hr_name: "", ceo_name: "" }).then(() => {});
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetch("/api/settings/public-pin/status").then(r=>r.json()).then(j=>setPinEnabled(!!j.enabled)).catch(()=>{});
   }, []);
 
   async function handleSaveCompany(e: React.FormEvent) {
@@ -99,6 +102,25 @@ export default function Settings() {
     }
     setMessage("Check your email to confirm the email change.");
     setLoading(false);
+  }
+
+  async function handleSetPublicPin() {
+    if (!/^\d{4,6}$/.test(publicPin)) return setError("PIN must be 4-6 digits");
+    setPinSaving(true); setError(""); setMessage("");
+    const res = await fetch("/api/settings/public-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: publicPin }) });
+    const j = await res.json();
+    setPinSaving(false);
+    if (!res.ok) return setError(j.error || "Failed");
+    setPinEnabled(true); setMessage("Public PIN set.");
+    setPublicPin("");
+  }
+
+  async function handleClearPublicPin() {
+    setPinSaving(true); setError(""); setMessage("");
+    const res = await fetch("/api/settings/public-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "clear" }) });
+    setPinSaving(false);
+    if (!res.ok) return setError("Failed");
+    setPinEnabled(false); setMessage("Public PIN cleared.");
   }
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -180,6 +202,41 @@ export default function Settings() {
                   {companySaving ? "Saving..." : "Save Company Settings"}
                 </button>
               </form>
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 shadow-2xl">
+              <h2 className="text-lg font-semibold text-white mb-1">Public Portal PIN</h2>
+              <p className="text-xs text-blue-200/60 mb-4">Require a 4-6 digit PIN for public visitors</p>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]{4,6}"
+                    value={publicPin}
+                    onChange={(e) => setPublicPin(e.target.value)}
+                    placeholder="Enter PIN (4-6 digits)"
+                    className="flex-1 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSetPublicPin}
+                    disabled={pinSaving}
+                    className="px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg disabled:opacity-50"
+                  >
+                    {pinSaving ? "Saving..." : "Set PIN"}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearPublicPin}
+                  disabled={pinSaving || !pinEnabled}
+                  className="w-full py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg disabled:opacity-40"
+                >
+                  Clear PIN
+                </button>
+                <p className="text-xs text-blue-200/60">{pinEnabled ? "PIN is currently set." : "No PIN set - public portal is open."}</p>
+              </div>
             </div>
 
             <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6 shadow-2xl">
