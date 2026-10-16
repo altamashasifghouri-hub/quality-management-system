@@ -49,9 +49,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Public PIN gate for /public pages (except /public/auth)
+  // Public PIN gate for /public pages (except /public/auth). Applies to EVERYONE, logged in or not.
   if (
-    !user &&
     request.nextUrl.pathname.startsWith("/public") &&
     !request.nextUrl.pathname.startsWith("/public/auth")
   ) {
