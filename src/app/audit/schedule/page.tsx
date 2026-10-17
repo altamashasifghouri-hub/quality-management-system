@@ -21,7 +21,7 @@ interface Finding {
 }
 interface AuditReportItem {
   id: string; kind: "iso" | "internal"; title: string; branch_id: string; branch_name: string;
-  departments: string[]; findings: Finding[]; date: string; document_number: string;
+  departments: string[]; findings: Finding[]; date: string; dates: string[]; document_number: string;
   team: string; prepared_by: string; result: string; round: 1 | 2;
 }
 interface Observation {
@@ -65,9 +65,22 @@ function auditRound(title: string): 1 | 2 {
   return /round\s*2/i.test(title || "") ? 2 : 1;
 }
 
+function rangeKeys(from: string, to: string): string[] {
+  const f = parseLocalDate(from);
+  const t = parseLocalDate(to);
+  if (isNaN(f.getTime())) return from ? [from] : [];
+  if (isNaN(t.getTime()) || t < f) return [from];
+  const keys: string[] = [];
+  for (let d = new Date(f); d <= t; d.setDate(d.getDate() + 1)) {
+    keys.push(toDateStr(d.getFullYear(), d.getMonth(), d.getDate()));
+  }
+  return keys;
+}
+
 function ReportCard({ report, branchColor }: { report: AuditReportItem; branchColor?: string }) {
   const s = summaryCounts(report.findings);
   const total = report.findings.length;
+  const dateLabel = report.dates && report.dates.length > 1 ? `${report.dates[0]} → ${report.dates[report.dates.length - 1]}` : report.date;
   return (
     <div className="bg-white/[0.04] border border-white/10 rounded-xl p-4 space-y-3">
       <div>
@@ -83,7 +96,7 @@ function ReportCard({ report, branchColor }: { report: AuditReportItem; branchCo
         <p className="text-sm text-white/85">{report.title || "Audit Report"}</p>
         <p className="text-[11px] text-blue-200/40 mt-0.5">
           {[
-            report.date,
+            dateLabel,
             report.document_number,
             report.team ? `Team: ${report.team}` : "",
             report.prepared_by ? `Prepared by: ${report.prepared_by}` : "",
@@ -237,7 +250,7 @@ export default function AuditSchedulePage() {
       .select("id,title,schedule_id,departments,findings,date_of_plan,document_number,audit_team,prepared_by,overall_result,status");
     const { data: intReports } = await supabase
       .from("internal_audits")
-      .select("id,title,branch_id,departments,findings,date_of_plan,document_number,audit_team,prepared_by,status");
+      .select("id,title,branch_id,schedule_id,departments,findings,date_of_plan,document_number,audit_team,prepared_by,status");
     const { data: visitRows } = await supabase
       .from("visit_records")
       .select("id,branch_id,visit_date,purpose,context,visited_by,status,observations")
@@ -256,23 +269,33 @@ export default function AuditSchedulePage() {
     })));
     const branchName = new Map<string, string>((b || []).map((r: any) => [r.id, r.name]));
     const schedBranch = new Map<string, string>((s || []).map((sc: any) => [sc.id, sc.branch_id]));
+    const schedRange = new Map<string, { from: string; to: string }>((s || []).map((sc: any) => [sc.id, { from: sc.date_from, to: sc.date_to }]));
+    function resolveDates(scheduleId: string | null, planDate: string): { date: string; dates: string[] } {
+      const range = scheduleId ? schedRange.get(scheduleId) : undefined;
+      if (range && range.from) return { date: range.from, dates: rangeKeys(range.from, range.to) };
+      return { date: planDate, dates: planDate ? [planDate] : [] };
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const isoItems: AuditReportItem[] = (isoReports || []).filter((p: any) => p.date_of_plan).map((p: any) => {
       const bid = schedBranch.get(p.schedule_id) || "";
+      const rd = resolveDates(p.schedule_id, p.date_of_plan);
       return {
         id: p.id, kind: "iso" as const, title: p.title || "", branch_id: bid,
         branch_name: branchName.get(bid) || "", departments: p.departments || [], findings: p.findings || [],
-        date: p.date_of_plan, document_number: p.document_number || "", team: p.audit_team || "",
+        date: rd.date, dates: rd.dates, document_number: p.document_number || "", team: p.audit_team || "",
         prepared_by: p.prepared_by || "", result: p.overall_result || p.status || "", round: auditRound(p.title || ""),
       };
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const intItems: AuditReportItem[] = (intReports || []).filter((a: any) => a.date_of_plan).map((a: any) => ({
-      id: a.id, kind: "internal" as const, title: a.title || "", branch_id: a.branch_id || "",
-      branch_name: branchName.get(a.branch_id) || "", departments: a.departments || [], findings: a.findings || [],
-      date: a.date_of_plan, document_number: a.document_number || "", team: a.audit_team || "",
-      prepared_by: a.prepared_by || "", result: a.status || "", round: auditRound(a.title || ""),
-    }));
+    const intItems: AuditReportItem[] = (intReports || []).filter((a: any) => a.date_of_plan).map((a: any) => {
+      const rd = resolveDates(a.schedule_id, a.date_of_plan);
+      return {
+        id: a.id, kind: "internal" as const, title: a.title || "", branch_id: a.branch_id || "",
+        branch_name: branchName.get(a.branch_id) || "", departments: a.departments || [], findings: a.findings || [],
+        date: rd.date, dates: rd.dates, document_number: a.document_number || "", team: a.audit_team || "",
+        prepared_by: a.prepared_by || "", result: a.status || "", round: auditRound(a.title || ""),
+      };
+    });
     setReportItems([...isoItems, ...intItems]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setVisits((visitRows || []).filter((v: any) => v.visit_date).map((v: any) => ({
@@ -312,9 +335,11 @@ export default function AuditSchedulePage() {
   const reportsByDate = useMemo(() => {
     const map: Record<string, AuditReportItem[]> = {};
     reportItems.forEach((r) => {
-      if (!r.date) return;
-      if (!map[r.date]) map[r.date] = [];
-      map[r.date].push(r);
+      const keys = r.dates && r.dates.length > 0 ? r.dates : (r.date ? [r.date] : []);
+      keys.forEach((k) => {
+        if (!map[k]) map[k] = [];
+        if (!map[k].includes(r)) map[k].push(r);
+      });
     });
     return map;
   }, [reportItems]);
@@ -478,12 +503,12 @@ export default function AuditSchedulePage() {
                       <span className="flex flex-col items-end gap-0.5">
                         {counts.r1 > 0 && (
                           <span title={`Round 1 · ${counts.r1} issue${counts.r1 !== 1 ? "s" : ""}`} className="inline-flex items-center gap-0.5 rounded-full bg-red-500/90 text-white text-[10px] font-bold leading-none px-1.5 py-1 shadow">
-                            R1<span className="hidden xl:inline">&nbsp;· {counts.r1}</span>
+                            R1&nbsp;· {counts.r1}
                           </span>
                         )}
                         {counts.r2 > 0 && (
                           <span title={`Round 2 · ${counts.r2} issue${counts.r2 !== 1 ? "s" : ""}`} className="inline-flex items-center gap-0.5 rounded-full bg-orange-500/90 text-white text-[10px] font-bold leading-none px-1.5 py-1 shadow">
-                            R2<span className="hidden xl:inline">&nbsp;· {counts.r2}</span>
+                            R2&nbsp;· {counts.r2}
                           </span>
                         )}
                       </span>
