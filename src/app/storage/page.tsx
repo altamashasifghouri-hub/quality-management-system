@@ -29,6 +29,8 @@ interface DriveAccount {
   label: string;
   sortOrder: number;
   clientKey: string;
+  isPreferred: boolean;
+  hasFolders: boolean;
   storageBytes: number;
   quotaUsage: number;
   quotaLimit: number;
@@ -120,6 +122,43 @@ export default function StoragePage() {
       fetchAll();
     } catch {
       showErr("Could not disconnect.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setPreferred(id: string, label: string) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/google-drive/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "prefer", id }),
+      });
+      if (!res.ok) return showErr("Could not set active drive.");
+      showMsg(`New uploads will go to "${label}".`);
+      fetchAll();
+    } catch {
+      showErr("Could not set active drive.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function repair(id: string, label: string) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/google-drive/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "repair", id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.result === "failed") return showErr("Repair failed. Make sure the Google Drive API is enabled for this project.");
+      showMsg(`Repaired "${label}".`);
+      fetchAll();
+    } catch {
+      showErr("Repair failed.");
     } finally {
       setBusy(false);
     }
@@ -280,19 +319,31 @@ export default function StoragePage() {
 
               {accounts.length > 0 && (
                 <div className="px-6 py-4 border-b border-white/10 space-y-3">
-                  <p className="text-xs text-blue-200/60">Connected accounts (uploads go to the first account with free space)</p>
+                  <p className="text-xs text-blue-200/60">Connected drives — new uploads go to the drive marked “Active for new uploads”, then overflow to others if it is full. All files stay visible below.</p>
                   {accounts.map((a) => {
                     const pct = a.quotaLimit ? (a.quotaUsage / a.quotaLimit) * 100 : 0;
                     return (
-                      <div key={a.id} className="bg-white/5 rounded-xl px-4 py-3">
+                      <div key={a.id} className={`rounded-xl px-4 py-3 ${a.isPreferred ? "bg-blue-500/10 border border-blue-500/30" : "bg-white/5"}`}>
                         <div className="flex items-center justify-between gap-3 mb-2">
                           <div className="min-w-0">
-                            <p className="text-sm text-white/90 truncate">{a.label}</p>
+                            <p className="text-sm text-white/90 truncate flex items-center gap-2">
+                              {a.label}
+                              {a.isPreferred && <span className="text-[10px] uppercase tracking-wide bg-blue-600 text-white rounded px-1.5 py-0.5 shrink-0">Active for new uploads</span>}
+                              {!a.hasFolders && <span className="text-[10px] uppercase tracking-wide bg-yellow-600 text-white rounded px-1.5 py-0.5 shrink-0">Needs setup</span>}
+                            </p>
                             <p className="text-xs text-blue-200/40">
                               {a.quotaLimit ? `${fmtBytes(a.quotaUsage)} of ${fmtBytes(a.quotaLimit)}` : "Quota unavailable"} · {a.counts.plan + a.counts.report + a.counts.capa} file(s) · {a.clientKey === "second" ? "2nd project" : "main project"}
                             </p>
                           </div>
-                          <button onClick={() => disconnect(a.id, a.label)} disabled={busy} className="text-xs text-red-400 hover:text-red-300 shrink-0">Disconnect</button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {!a.hasFolders && (
+                              <button onClick={() => repair(a.id, a.label)} disabled={busy} className="text-xs text-yellow-400 hover:text-yellow-300">Repair</button>
+                            )}
+                            {!a.isPreferred && a.hasFolders && (
+                              <button onClick={() => setPreferred(a.id, a.label)} disabled={busy} className="text-xs text-blue-400 hover:text-blue-300">Use for uploads</button>
+                            )}
+                            <button onClick={() => disconnect(a.id, a.label)} disabled={busy} className="text-xs text-red-400 hover:text-red-300">Disconnect</button>
+                          </div>
                         </div>
                         <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                           <div className={`h-full rounded-full ${pct > 80 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${Math.min(Math.max(pct, 0.5), 100)}%` }} />

@@ -13,6 +13,7 @@ export interface DriveAccount {
   capa_folder_id: string | null;
   sort_order: number;
   client_key: string;
+  is_preferred: boolean;
   quota_usage: number;
   quota_limit: number;
   quota_checked_at: string | null;
@@ -85,10 +86,49 @@ function hasRoom(account: DriveAccount): boolean {
 export async function getUploadTargets(supabase: any, userId: string, kind: string): Promise<UploadTarget[]> {
   const accounts = await resolveAccounts(supabase, userId);
   const withRoom = accounts.filter(hasRoom);
-  const ordered = (withRoom.length ? withRoom : accounts).sort((a, b) => a.sort_order - b.sort_order);
+  const ordered = (withRoom.length ? withRoom : accounts).sort((a, b) => {
+    if (a.is_preferred !== b.is_preferred) return a.is_preferred ? -1 : 1;
+    return a.sort_order - b.sort_order;
+  });
   return ordered
     .map((a) => ({ accountId: a.id, email: a.email, token: a.token, folderId: accountFolderId(a, kind) }))
     .filter((t) => t.folderId);
+}
+
+export async function setPreferredAccount(supabase: any, userId: string, id: string): Promise<boolean> {
+  const { error: clearErr } = await supabase
+    .from("drive_accounts")
+    .update({ is_preferred: false, updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  if (clearErr) return false;
+  const { error } = await supabase
+    .from("drive_accounts")
+    .update({ is_preferred: true, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("id", id);
+  return !error;
+}
+
+export async function provisionAccountFolders(supabase: any, account: ResolvedAccount): Promise<boolean> {
+  if (account.plan_folder_id && account.report_folder_id && account.evidence_folder_id && account.capa_folder_id) {
+    return true;
+  }
+  try {
+    const folders = await provisionFolders(account.token);
+    const { error } = await supabase
+      .from("drive_accounts")
+      .update({
+        plan_folder_id: folders.plan,
+        report_folder_id: folders.report,
+        evidence_folder_id: folders.evidence,
+        capa_folder_id: folders.capa,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", account.id);
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 export function isQuotaError(status: number, body: string): boolean {

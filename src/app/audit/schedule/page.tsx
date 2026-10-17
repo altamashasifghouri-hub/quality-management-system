@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/Navbar";
+import EvidenceThumb from "@/components/EvidenceThumb";
 
 interface Branch { id: string; name: string; }
 interface Department { id: string; name: string; branch_id: string; }
@@ -12,6 +13,16 @@ interface AuditSchedule {
   auditor: string; status: string; notes: string; created_at: string;
   departments: string[];
   branch_name?: string;
+}
+interface Finding {
+  type?: string; detail?: string; department?: string; recommendation?: string;
+  evidence?: string[]; resolved?: boolean; timeline?: number; ncr_number?: string;
+  clause?: string; sop?: string; sopClause?: string; policy?: string; policyClause?: string;
+}
+interface AuditReportItem {
+  id: string; kind: "iso" | "internal"; title: string; branch_id: string; branch_name: string;
+  departments: string[]; findings: Finding[]; date: string; document_number: string;
+  team: string; prepared_by: string; result: string;
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -27,6 +38,94 @@ function parseLocalDate(s: string) {
   return new Date(y, m - 1, d);
 }
 
+function sevClasses(type?: string) {
+  switch ((type || "").toLowerCase()) {
+    case "critical": return "bg-red-500/20 border-red-500/40 text-red-300";
+    case "high": return "bg-orange-500/20 border-orange-500/40 text-orange-300";
+    case "medium": return "bg-amber-500/20 border-amber-500/40 text-amber-300";
+    case "low": return "bg-blue-500/20 border-blue-500/40 text-blue-300";
+    default: return "bg-white/10 border-white/20 text-blue-200";
+  }
+}
+
+function summaryCounts(findings: Finding[]) {
+  const s: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  findings.forEach((f) => { const t = f.type || ""; if (s[t] !== undefined) s[t] += 1; });
+  return s;
+}
+
+function ReportCard({ report, branchColor }: { report: AuditReportItem; branchColor?: string }) {
+  const s = summaryCounts(report.findings);
+  const total = report.findings.length;
+  return (
+    <div className="bg-white/[0.04] border border-white/10 rounded-xl p-4 space-y-3">
+      <div>
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className={`w-2.5 h-2.5 rounded-full ${branchColor || "bg-gray-500"}`} />
+          <span className="text-sm font-semibold text-white">{report.branch_name || "—"}</span>
+          <span className={`px-2 py-0.5 text-[10px] rounded-full border ${report.kind === "iso" ? "bg-blue-500/20 border-blue-500/30 text-blue-200" : "bg-purple-500/20 border-purple-500/30 text-purple-200"}`}>
+            {report.kind === "iso" ? "ISO 9001" : "Internal"}
+          </span>
+          {report.result && <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 border border-white/10 text-blue-200/70">{report.result}</span>}
+        </div>
+        <p className="text-sm text-white/85">{report.title || "Audit Report"}</p>
+        <p className="text-[11px] text-blue-200/40 mt-0.5">
+          {[
+            report.date,
+            report.document_number,
+            report.team ? `Team: ${report.team}` : "",
+            report.prepared_by ? `Prepared by: ${report.prepared_by}` : "",
+          ].filter(Boolean).join(" · ")}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 text-white font-semibold border border-white/10">{total} issue{total !== 1 ? "s" : ""}</span>
+        <span className="px-2 py-0.5 text-[10px] rounded-full bg-red-500/20 border border-red-500/40 text-red-200">Critical {s.Critical}</span>
+        <span className="px-2 py-0.5 text-[10px] rounded-full bg-orange-500/20 border border-orange-500/40 text-orange-200">High {s.High}</span>
+        <span className="px-2 py-0.5 text-[10px] rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-200">Medium {s.Medium}</span>
+        <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-200">Low {s.Low}</span>
+      </div>
+
+      {report.departments.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {report.departments.map((dept, i) => (
+            <span key={i} className="px-1.5 py-0.5 text-[10px] bg-white/5 rounded text-blue-200/60">{dept}</span>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {report.findings.length === 0 && <p className="text-[11px] text-blue-200/40">No findings recorded for this audit.</p>}
+        {report.findings.map((f, i) => (
+          <div key={i} className="bg-slate-900/50 border border-white/5 rounded-lg p-3">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+              <span className="text-[10px] font-semibold text-blue-300">{f.ncr_number || `NCR - QA-${String(i + 1).padStart(2, "0")}`}</span>
+              <span className={`px-1.5 py-0.5 text-[10px] rounded-full border ${sevClasses(f.type)}`}>{f.type || "—"}</span>
+              {f.department && <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-200">{f.department}</span>}
+              <span className={`px-1.5 py-0.5 text-[10px] rounded-full border ${f.resolved ? "bg-green-500/20 border-green-500/40 text-green-300" : "bg-white/10 border-white/10 text-blue-200/60"}`}>{f.resolved ? "Resolved" : "Open"}</span>
+            </div>
+            {f.detail && <p className="text-[11px] text-blue-100/80 leading-relaxed">{f.detail}</p>}
+            {(f.clause || f.sopClause || f.policyClause || f.sop || f.policy) && (
+              <p className="text-[10px] text-blue-200/50 mt-1">{f.clause || f.sopClause || f.policyClause || f.sop || f.policy}</p>
+            )}
+            {f.recommendation && (
+              <p className="text-[10px] text-emerald-200/70 mt-1"><span className="font-semibold">Recommendation:</span> {f.recommendation}</p>
+            )}
+            {f.evidence && f.evidence.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {f.evidence.map((url, j) => (
+                  <EvidenceThumb key={j} url={url} className="w-20 h-16 object-cover rounded border border-white/15 hover:opacity-80" />
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AuditSchedulePage() {
   const supabase = createClient();
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -34,6 +133,7 @@ export default function AuditSchedulePage() {
   const [schedules, setSchedules] = useState<AuditSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [planBySchedule, setPlanBySchedule] = useState<Record<string, "iso" | "internal">>({});
+  const [reportItems, setReportItems] = useState<AuditReportItem[]>([]);
 
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -56,6 +156,12 @@ export default function AuditSchedulePage() {
     const { data: s } = await supabase.from("audit_schedules").select("*, branches(name)").order("date_from");
     const { data: isoPlanRows } = await supabase.from("audit_plans").select("schedule_id");
     const { data: intPlanRows } = await supabase.from("internal_audits").select("schedule_id");
+    const { data: isoReports } = await supabase
+      .from("audit_plans")
+      .select("id,title,schedule_id,departments,findings,date_of_plan,document_number,audit_team,prepared_by,overall_result,status");
+    const { data: intReports } = await supabase
+      .from("internal_audits")
+      .select("id,title,branch_id,departments,findings,date_of_plan,document_number,audit_team,prepared_by,status");
     const pmap: Record<string, "iso" | "internal"> = {};
     (isoPlanRows || []).forEach((r: any) => { if (r.schedule_id) pmap[r.schedule_id] = "iso"; });
     (intPlanRows || []).forEach((r: any) => { if (r.schedule_id && !pmap[r.schedule_id]) pmap[r.schedule_id] = "internal"; });
@@ -68,6 +174,26 @@ export default function AuditSchedulePage() {
       auditor: r.auditor, status: r.status, notes: r.notes, created_at: r.created_at,
       departments: r.departments || [], branch_name: r.branches?.name || "",
     })));
+    const branchName = new Map<string, string>((b || []).map((r: any) => [r.id, r.name]));
+    const schedBranch = new Map<string, string>((s || []).map((sc: any) => [sc.id, sc.branch_id]));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const isoItems: AuditReportItem[] = (isoReports || []).filter((p: any) => p.date_of_plan).map((p: any) => {
+      const bid = schedBranch.get(p.schedule_id) || "";
+      return {
+        id: p.id, kind: "iso" as const, title: p.title || "", branch_id: bid,
+        branch_name: branchName.get(bid) || "", departments: p.departments || [], findings: p.findings || [],
+        date: p.date_of_plan, document_number: p.document_number || "", team: p.audit_team || "",
+        prepared_by: p.prepared_by || "", result: p.overall_result || p.status || "",
+      };
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const intItems: AuditReportItem[] = (intReports || []).filter((a: any) => a.date_of_plan).map((a: any) => ({
+      id: a.id, kind: "internal" as const, title: a.title || "", branch_id: a.branch_id || "",
+      branch_name: branchName.get(a.branch_id) || "", departments: a.departments || [], findings: a.findings || [],
+      date: a.date_of_plan, document_number: a.document_number || "", team: a.audit_team || "",
+      prepared_by: a.prepared_by || "", result: a.status || "",
+    }));
+    setReportItems([...isoItems, ...intItems]);
     setLoading(false);
   }, [supabase]);
 
@@ -95,6 +221,25 @@ export default function AuditSchedulePage() {
   }, [schedules]);
 
   const filteredDepts = allDepts.filter((d) => d.branch_id === selectedBranch);
+
+  const reportsByDate = useMemo(() => {
+    const map: Record<string, AuditReportItem[]> = {};
+    reportItems.forEach((r) => {
+      if (!r.date) return;
+      if (!map[r.date]) map[r.date] = [];
+      map[r.date].push(r);
+    });
+    return map;
+  }, [reportItems]);
+
+  const findingsByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    reportItems.forEach((r) => {
+      if (!r.date) return;
+      map[r.date] = (map[r.date] || 0) + r.findings.length;
+    });
+    return map;
+  }, [reportItems]);
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 3000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 4000); }
@@ -182,11 +327,12 @@ export default function AuditSchedulePage() {
   }, [calYear, calMonth]);
 
   const selectedDaySchedules = selectedDay ? schedulesByDate[selectedDay] || [] : [];
+  const selectedDayReports = selectedDay ? reportsByDate[selectedDay] || [] : [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
       <Navbar />
-      <main className="max-w-6xl mx-auto px-6 py-16">
+      <main className="max-w-7xl mx-auto px-6 py-16">
         <div className="mb-8">
           <Link href="/audit" className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
@@ -216,56 +362,78 @@ export default function AuditSchedulePage() {
                 const audits = schedulesByDate[cell.key] || [];
                 const seen = new Set<string>();
                 const auditBranches = audits.filter((a) => { if (seen.has(a.branch_id)) return false; seen.add(a.branch_id); return true; });
+                const findingsCount = findingsByDate[cell.key] || 0;
                 const isSelected = selectedDay === cell.key;
                 const isToday = cell.key === toDateStr(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                 const hasAudit = auditBranches.length > 0;
                 const cellColor = hasAudit ? `${branchColorMap[auditBranches[0].branch_id] || "bg-blue-500"}` : "";
                 return (
                   <button key={cell.key} onClick={() => { if (cell.current) setSelectedDay(isSelected ? null : cell.key); }}
-                    className={`relative min-h-[72px] p-1 text-left transition-colors border ${cell.current ? (isSelected ? "bg-blue-600/30 ring-1 ring-blue-500 border-blue-400/30" : hasAudit ? `${cellColor}/25 border-white/10 hover:brightness-125` : "bg-slate-800/50 border-white/5 hover:bg-white/5") : "bg-slate-900/30 border-white/5"}`}>
-                    <span className="flex items-center justify-between">
-                      <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold ${hasAudit ? `${cellColor} text-white shadow` : cell.current ? (isToday ? "text-blue-400 ring-1 ring-blue-500/60 bg-blue-500/10" : "text-white/70") : "text-white/25"}`}>
+                    className={`relative min-h-[128px] p-1.5 text-left transition-colors border ${cell.current ? (isSelected ? "bg-blue-600/30 ring-1 ring-blue-500 border-blue-400/30" : hasAudit ? `${cellColor}/25 border-white/10 hover:brightness-125` : "bg-slate-800/50 border-white/5 hover:bg-white/5") : "bg-slate-900/30 border-white/5"}`}>
+                    <span className="flex items-start justify-between gap-1">
+                      <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-sm font-semibold ${hasAudit ? `${cellColor} text-white shadow` : cell.current ? (isToday ? "text-blue-400 ring-1 ring-blue-500/60 bg-blue-500/10" : "text-white/70") : "text-white/25"}`}>
                         {cell.day}
                       </span>
-                      {hasAudit && <span className="text-[9px] font-medium text-white/50">{auditBranches.length} b</span>}
+                      {findingsCount > 0 && (
+                        <span title={`${findingsCount} issue${findingsCount !== 1 ? "s" : ""}`} className="inline-flex items-center gap-0.5 rounded-full bg-red-500/90 text-white text-[10px] font-bold leading-none px-1.5 py-1 shadow">
+                          {findingsCount}<span className="hidden xl:inline">&nbsp;issue{findingsCount !== 1 ? "s" : ""}</span>
+                        </span>
+                      )}
                     </span>
                     <div className="mt-1 space-y-0.5">
-                      {auditBranches.slice(0, 2).map((a) => (
-                        <div key={a.branch_id} className={`flex items-center gap-1 text-[10px] leading-tight px-1.5 py-1 rounded-md truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/40 text-white border border-white/10`}>
+                      {auditBranches.slice(0, 3).map((a) => (
+                        <div key={a.branch_id} className={`flex items-center gap-1 text-[11px] leading-tight px-1.5 py-1 rounded-md truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/40 text-white border border-white/10`}>
                           <span className="truncate">{a.branch_name}</span>
                           {isoMentioned(a) && <span className="shrink-0 px-1 py-px rounded-full bg-blue-500 text-white text-[8px] font-semibold">ISO</span>}
                         </div>
                       ))}
-                      {auditBranches.length > 2 && <div className="text-[9px] text-white/40 px-1">+{auditBranches.length - 2} more</div>}
+                      {auditBranches.length > 3 && <div className="text-[10px] text-white/40 px-1">+{auditBranches.length - 3} more</div>}
                     </div>
                   </button>
                 );
               })}
             </div>
-            <div className="flex flex-wrap gap-3 mt-4">
+            <div className="flex flex-wrap gap-3 mt-4 items-center">
+              <div className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500/90 text-white text-[10px] font-bold">3</span><span className="text-xs text-white/60">issues raised that day</span></div>
               {branches.map((b) => (<div key={b.id} className="flex items-center gap-1.5"><div className={`w-3.5 h-3.5 rounded-md ${branchColorMap[b.id]}`} /><span className="text-xs text-white/60">{b.name}</span></div>))}
             </div>
           </div>
 
           <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
-            <h3 className="text-sm font-semibold text-white mb-3">{selectedDay ? `Audits on ${selectedDay}` : "Select a day"}</h3>
-            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day with colored tiles to see scheduled audits.</p>}
-            {selectedDay && selectedDaySchedules.length === 0 && <p className="text-xs text-blue-200/40">No audits scheduled for this day.</p>}
-            {selectedDaySchedules.map((s) => (
-              <div key={s.id} className="mb-3 p-3 bg-white/5 rounded-lg border border-white/5">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className={`w-2 h-2 rounded-full ${branchColorMap[s.branch_id] || "bg-gray-500"}`} />
-                  <span className="text-sm font-medium text-white">{s.branch_name}</span>
-                  {planBadge(s.id)}
-                  {isoMentioned(s) && <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">notes: ISO</span>}
-                </div>
-                <div className="text-xs text-blue-200/60 ml-4">{s.date_from} → {s.date_to}</div>
-                <div className="text-xs text-blue-200/40 ml-4 mt-1 flex flex-wrap gap-1">
-                  {s.departments.map((dept, i) => (<span key={i} className="px-1.5 py-0.5 bg-white/5 rounded">{dept}</span>))}
-                </div>
-                {s.auditor && <div className="text-xs text-blue-200/40 ml-4 mt-0.5">Auditor: {s.auditor}</div>}
+            <h3 className="text-sm font-semibold text-white mb-3">{selectedDay ? `Audit reports — ${selectedDay}` : "Select a day"}</h3>
+            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day to see its full audit report and scheduled audits.</p>}
+            {selectedDay && (
+              <div className="space-y-4 lg:max-h-[80vh] lg:overflow-y-auto lg:pr-1">
+                {selectedDayReports.length === 0 ? (
+                  <p className="text-xs text-blue-200/40">No audit report recorded for this day.</p>
+                ) : (
+                  selectedDayReports.map((r) => (
+                    <ReportCard key={`${r.kind}-${r.id}`} report={r} branchColor={branchColorMap[r.branch_id]} />
+                  ))
+                )}
+
+                {selectedDaySchedules.length > 0 && (
+                  <div className="pt-2 border-t border-white/10">
+                    <h4 className="text-xs font-semibold text-blue-200/60 uppercase tracking-wide mb-2">Scheduled audits on this day</h4>
+                    {selectedDaySchedules.map((s) => (
+                      <div key={s.id} className="mb-3 p-3 bg-white/5 rounded-lg border border-white/5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className={`w-2 h-2 rounded-full ${branchColorMap[s.branch_id] || "bg-gray-500"}`} />
+                          <span className="text-sm font-medium text-white">{s.branch_name}</span>
+                          {planBadge(s.id)}
+                          {isoMentioned(s) && <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-200">notes: ISO</span>}
+                        </div>
+                        <div className="text-xs text-blue-200/60 ml-4">{s.date_from} → {s.date_to}</div>
+                        <div className="text-xs text-blue-200/40 ml-4 mt-1 flex flex-wrap gap-1">
+                          {s.departments.map((dept, i) => (<span key={i} className="px-1.5 py-0.5 bg-white/5 rounded">{dept}</span>))}
+                        </div>
+                        {s.auditor && <div className="text-xs text-blue-200/40 ml-4 mt-0.5">Auditor: {s.auditor}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
+            )}
           </div>
         </div>
 

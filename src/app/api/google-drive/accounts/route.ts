@@ -1,5 +1,39 @@
 import { NextResponse } from "next/server";
 import { revokeToken, supabaseFromCookies } from "@/lib/google-oauth";
+import { provisionAccountFolders, refreshStoredQuota, resolveAccounts, setPreferredAccount } from "@/lib/drive-accounts";
+
+export async function POST(req: Request) {
+  const supabase = await supabaseFromCookies();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
+  const action = String(body.action || "");
+  const id = String(body.id || "");
+
+  if (action === "prefer") {
+    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    const ok = await setPreferredAccount(supabase, auth.user.id, id);
+    if (!ok) return NextResponse.json({ error: "Could not set preferred drive." }, { status: 500 });
+    return NextResponse.json({ result: "ok" });
+  }
+
+  if (action === "repair") {
+    const accounts = await resolveAccounts(supabase, auth.user.id);
+    const account = accounts.find((a) => a.id === id);
+    if (!account) return NextResponse.json({ error: "Account not found." }, { status: 404 });
+    const provisioned = await provisionAccountFolders(supabase, account);
+    const quota = await refreshStoredQuota(supabase, account);
+    return NextResponse.json({ result: provisioned ? "ok" : "failed", quota });
+  }
+
+  return NextResponse.json({ error: "Unknown action." }, { status: 400 });
+}
 
 export async function DELETE(req: Request) {
   const supabase = await supabaseFromCookies();

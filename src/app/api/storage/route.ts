@@ -78,6 +78,8 @@ export async function GET(req: Request) {
             label,
             sortOrder: account.sort_order,
             clientKey: account.client_key || "default",
+            isPreferred: !!account.is_preferred,
+            hasFolders: !!(account.plan_folder_id && account.report_folder_id && account.evidence_folder_id && account.capa_folder_id),
             storageBytes: bytes,
             quotaUsage: quota.usage,
             quotaLimit: quota.limit,
