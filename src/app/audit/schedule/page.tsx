@@ -22,7 +22,10 @@ interface Finding {
 interface AuditReportItem {
   id: string; kind: "iso" | "internal"; title: string; branch_id: string; branch_name: string;
   departments: string[]; findings: Finding[]; date: string; document_number: string;
-  team: string; prepared_by: string; result: string;
+  team: string; prepared_by: string; result: string; round: 1 | 2;
+}
+interface VisitItem {
+  id: string; branch_id: string; branch_name: string; date: string; purpose: string;
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -54,6 +57,10 @@ function summaryCounts(findings: Finding[]) {
   return s;
 }
 
+function auditRound(title: string): 1 | 2 {
+  return /round\s*2/i.test(title || "") ? 2 : 1;
+}
+
 function ReportCard({ report, branchColor }: { report: AuditReportItem; branchColor?: string }) {
   const s = summaryCounts(report.findings);
   const total = report.findings.length;
@@ -66,6 +73,7 @@ function ReportCard({ report, branchColor }: { report: AuditReportItem; branchCo
           <span className={`px-2 py-0.5 text-[10px] rounded-full border ${report.kind === "iso" ? "bg-blue-500/20 border-blue-500/30 text-blue-200" : "bg-purple-500/20 border-purple-500/30 text-purple-200"}`}>
             {report.kind === "iso" ? "ISO 9001" : "Internal"}
           </span>
+          <span className={`px-2 py-0.5 text-[10px] rounded-full border ${report.round === 2 ? "bg-orange-500/20 border-orange-500/40 text-orange-200" : "bg-red-500/20 border-red-500/40 text-red-200"}`}>Round {report.round}</span>
           {report.result && <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 border border-white/10 text-blue-200/70">{report.result}</span>}
         </div>
         <p className="text-sm text-white/85">{report.title || "Audit Report"}</p>
@@ -134,6 +142,7 @@ export default function AuditSchedulePage() {
   const [loading, setLoading] = useState(true);
   const [planBySchedule, setPlanBySchedule] = useState<Record<string, "iso" | "internal">>({});
   const [reportItems, setReportItems] = useState<AuditReportItem[]>([]);
+  const [visits, setVisits] = useState<VisitItem[]>([]);
 
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -162,6 +171,10 @@ export default function AuditSchedulePage() {
     const { data: intReports } = await supabase
       .from("internal_audits")
       .select("id,title,branch_id,departments,findings,date_of_plan,document_number,audit_team,prepared_by,status");
+    const { data: visitRows } = await supabase
+      .from("visit_records")
+      .select("id,branch_id,visit_date,purpose")
+      .order("visit_date");
     const pmap: Record<string, "iso" | "internal"> = {};
     (isoPlanRows || []).forEach((r: any) => { if (r.schedule_id) pmap[r.schedule_id] = "iso"; });
     (intPlanRows || []).forEach((r: any) => { if (r.schedule_id && !pmap[r.schedule_id]) pmap[r.schedule_id] = "internal"; });
@@ -183,7 +196,7 @@ export default function AuditSchedulePage() {
         id: p.id, kind: "iso" as const, title: p.title || "", branch_id: bid,
         branch_name: branchName.get(bid) || "", departments: p.departments || [], findings: p.findings || [],
         date: p.date_of_plan, document_number: p.document_number || "", team: p.audit_team || "",
-        prepared_by: p.prepared_by || "", result: p.overall_result || p.status || "",
+        prepared_by: p.prepared_by || "", result: p.overall_result || p.status || "", round: auditRound(p.title || ""),
       };
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -191,9 +204,14 @@ export default function AuditSchedulePage() {
       id: a.id, kind: "internal" as const, title: a.title || "", branch_id: a.branch_id || "",
       branch_name: branchName.get(a.branch_id) || "", departments: a.departments || [], findings: a.findings || [],
       date: a.date_of_plan, document_number: a.document_number || "", team: a.audit_team || "",
-      prepared_by: a.prepared_by || "", result: a.status || "",
+      prepared_by: a.prepared_by || "", result: a.status || "", round: auditRound(a.title || ""),
     }));
     setReportItems([...isoItems, ...intItems]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setVisits((visitRows || []).filter((v: any) => v.visit_date).map((v: any) => ({
+      id: v.id, branch_id: v.branch_id || "", branch_name: branchName.get(v.branch_id) || "",
+      date: v.visit_date, purpose: v.purpose || "",
+    })));
     setLoading(false);
   }, [supabase]);
 
@@ -233,13 +251,25 @@ export default function AuditSchedulePage() {
   }, [reportItems]);
 
   const findingsByDate = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { r1: number; r2: number }> = {};
     reportItems.forEach((r) => {
       if (!r.date) return;
-      map[r.date] = (map[r.date] || 0) + r.findings.length;
+      if (!map[r.date]) map[r.date] = { r1: 0, r2: 0 };
+      if (r.round === 2) map[r.date].r2 += r.findings.length;
+      else map[r.date].r1 += r.findings.length;
     });
     return map;
   }, [reportItems]);
+
+  const visitsByDate = useMemo(() => {
+    const map: Record<string, VisitItem[]> = {};
+    visits.forEach((v) => {
+      if (!v.date) return;
+      if (!map[v.date]) map[v.date] = [];
+      map[v.date].push(v);
+    });
+    return map;
+  }, [visits]);
 
   function showMsg(msg: string) { setMessage(msg); setTimeout(() => setMessage(""), 3000); }
   function showErr(msg: string) { setError(msg); setTimeout(() => setError(""), 4000); }
@@ -328,6 +358,7 @@ export default function AuditSchedulePage() {
 
   const selectedDaySchedules = selectedDay ? schedulesByDate[selectedDay] || [] : [];
   const selectedDayReports = selectedDay ? reportsByDate[selectedDay] || [] : [];
+  const selectedDayVisits = selectedDay ? visitsByDate[selectedDay] || [] : [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-900/85 to-slate-950">
@@ -362,46 +393,63 @@ export default function AuditSchedulePage() {
                 const audits = schedulesByDate[cell.key] || [];
                 const seen = new Set<string>();
                 const auditBranches = audits.filter((a) => { if (seen.has(a.branch_id)) return false; seen.add(a.branch_id); return true; });
-                const findingsCount = findingsByDate[cell.key] || 0;
+                const counts = findingsByDate[cell.key] || { r1: 0, r2: 0 };
+                const dayVisits = visitsByDate[cell.key] || [];
                 const isSelected = selectedDay === cell.key;
                 const isToday = cell.key === toDateStr(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                 const hasAudit = auditBranches.length > 0;
                 const cellColor = hasAudit ? `${branchColorMap[auditBranches[0].branch_id] || "bg-blue-500"}` : "";
                 return (
                   <button key={cell.key} onClick={() => { if (cell.current) setSelectedDay(isSelected ? null : cell.key); }}
-                    className={`relative min-h-[128px] p-1.5 text-left transition-colors border ${cell.current ? (isSelected ? "bg-blue-600/30 ring-1 ring-blue-500 border-blue-400/30" : hasAudit ? `${cellColor}/25 border-white/10 hover:brightness-125` : "bg-slate-800/50 border-white/5 hover:bg-white/5") : "bg-slate-900/30 border-white/5"}`}>
+                    className={`relative min-h-[150px] p-1.5 text-left transition-colors border ${cell.current ? (isSelected ? "bg-blue-600/30 ring-1 ring-blue-500 border-blue-400/30" : hasAudit || dayVisits.length > 0 ? `${hasAudit ? cellColor : "bg-teal-500"}/25 border-white/10 hover:brightness-125` : "bg-slate-800/50 border-white/5 hover:bg-white/5") : "bg-slate-900/30 border-white/5"}`}>
                     <span className="flex items-start justify-between gap-1">
                       <span className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-sm font-semibold ${hasAudit ? `${cellColor} text-white shadow` : cell.current ? (isToday ? "text-blue-400 ring-1 ring-blue-500/60 bg-blue-500/10" : "text-white/70") : "text-white/25"}`}>
                         {cell.day}
                       </span>
-                      {findingsCount > 0 && (
-                        <span title={`${findingsCount} issue${findingsCount !== 1 ? "s" : ""}`} className="inline-flex items-center gap-0.5 rounded-full bg-red-500/90 text-white text-[10px] font-bold leading-none px-1.5 py-1 shadow">
-                          {findingsCount}<span className="hidden xl:inline">&nbsp;issue{findingsCount !== 1 ? "s" : ""}</span>
-                        </span>
-                      )}
+                      <span className="flex flex-col items-end gap-0.5">
+                        {counts.r1 > 0 && (
+                          <span title={`Round 1 · ${counts.r1} issue${counts.r1 !== 1 ? "s" : ""}`} className="inline-flex items-center gap-0.5 rounded-full bg-red-500/90 text-white text-[10px] font-bold leading-none px-1.5 py-1 shadow">
+                            R1<span className="hidden xl:inline">&nbsp;· {counts.r1}</span>
+                          </span>
+                        )}
+                        {counts.r2 > 0 && (
+                          <span title={`Round 2 · ${counts.r2} issue${counts.r2 !== 1 ? "s" : ""}`} className="inline-flex items-center gap-0.5 rounded-full bg-orange-500/90 text-white text-[10px] font-bold leading-none px-1.5 py-1 shadow">
+                            R2<span className="hidden xl:inline">&nbsp;· {counts.r2}</span>
+                          </span>
+                        )}
+                      </span>
                     </span>
                     <div className="mt-1 space-y-0.5">
-                      {auditBranches.slice(0, 3).map((a) => (
+                      {auditBranches.slice(0, 2).map((a) => (
                         <div key={a.branch_id} className={`flex items-center gap-1 text-[11px] leading-tight px-1.5 py-1 rounded-md truncate ${branchColorMap[a.branch_id] || "bg-gray-500"}/40 text-white border border-white/10`}>
                           <span className="truncate">{a.branch_name}</span>
                           {isoMentioned(a) && <span className="shrink-0 px-1 py-px rounded-full bg-blue-500 text-white text-[8px] font-semibold">ISO</span>}
                         </div>
                       ))}
-                      {auditBranches.length > 3 && <div className="text-[10px] text-white/40 px-1">+{auditBranches.length - 3} more</div>}
+                      {auditBranches.length > 2 && <div className="text-[10px] text-white/40 px-1">+{auditBranches.length - 2} more</div>}
+                      {dayVisits.slice(0, 2).map((v) => (
+                        <div key={v.id} title={`Visit: ${v.purpose}`} className="flex items-center gap-1 text-[10px] leading-tight px-1.5 py-0.5 rounded-md truncate bg-teal-500/25 text-teal-100 border border-teal-400/30">
+                          <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>
+                          <span className="truncate">Visit · {v.branch_name}</span>
+                        </div>
+                      ))}
+                      {dayVisits.length > 2 && <div className="text-[10px] text-teal-200/60 px-1">+{dayVisits.length - 2} visit{dayVisits.length - 2 !== 1 ? "s" : ""}</div>}
                     </div>
                   </button>
                 );
               })}
             </div>
             <div className="flex flex-wrap gap-3 mt-4 items-center">
-              <div className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500/90 text-white text-[10px] font-bold">3</span><span className="text-xs text-white/60">issues raised that day</span></div>
+              <div className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-red-500/90 text-white text-[10px] font-bold">R1</span><span className="text-xs text-white/60">Round 1 issues</span></div>
+              <div className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-orange-500/90 text-white text-[10px] font-bold">R2</span><span className="text-xs text-white/60">Round 2 issues</span></div>
+              <div className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-teal-500/25 border border-teal-400/30 text-teal-100"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg></span><span className="text-xs text-white/60">Branch visit</span></div>
               {branches.map((b) => (<div key={b.id} className="flex items-center gap-1.5"><div className={`w-3.5 h-3.5 rounded-md ${branchColorMap[b.id]}`} /><span className="text-xs text-white/60">{b.name}</span></div>))}
             </div>
           </div>
 
           <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-white mb-3">{selectedDay ? `Audit reports — ${selectedDay}` : "Select a day"}</h3>
-            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day to see its full audit report and scheduled audits.</p>}
+            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day to see its audit reports (with Round 1 / Round 2 issues), scheduled audits and branch visits.</p>}
             {selectedDay && (
               <div className="space-y-4 lg:max-h-[80vh] lg:overflow-y-auto lg:pr-1">
                 {selectedDayReports.length === 0 ? (
@@ -428,6 +476,21 @@ export default function AuditSchedulePage() {
                           {s.departments.map((dept, i) => (<span key={i} className="px-1.5 py-0.5 bg-white/5 rounded">{dept}</span>))}
                         </div>
                         {s.auditor && <div className="text-xs text-blue-200/40 ml-4 mt-0.5">Auditor: {s.auditor}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {selectedDayVisits.length > 0 && (
+                  <div className="pt-2 border-t border-white/10">
+                    <h4 className="text-xs font-semibold text-teal-200/70 uppercase tracking-wide mb-2">Branch visits on this day</h4>
+                    {selectedDayVisits.map((v) => (
+                      <div key={v.id} className="mb-2 p-3 bg-teal-500/10 rounded-lg border border-teal-400/20 flex items-start gap-2">
+                        <svg className="w-4 h-4 text-teal-300 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>
+                        <div>
+                          <div className="text-sm text-teal-100 font-medium">{v.branch_name}</div>
+                          <div className="text-xs text-teal-200/60">{v.purpose || "Visit"}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
