@@ -19,6 +19,21 @@ interface DriveFile {
   mimeType: string;
   created_at: string;
   url: string;
+  accountId?: string;
+  accountLabel?: string;
+}
+
+interface DriveAccount {
+  id: string;
+  email: string | null;
+  label: string;
+  sortOrder: number;
+  clientKey: string;
+  storageBytes: number;
+  quotaUsage: number;
+  quotaLimit: number;
+  folderIds: { plan: string | null; report: string | null; evidence: string | null; capa: string | null };
+  counts: { plan: number; report: number; capa: number };
 }
 
 function fmtBytes(bytes: number) {
@@ -36,9 +51,9 @@ function fmtDate(s: string) {
 export default function StoragePage() {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [folders, setFolders] = useState<{ plan: DriveFile[]; report: DriveFile[]; capa: DriveFile[] }>({ plan: [], report: [], capa: [] });
+  const [accounts, setAccounts] = useState<DriveAccount[]>([]);
   const [activeType, setActiveType] = useState<"plan" | "report" | "capa">("plan");
   const [driveInfo, setDriveInfo] = useState<{ storageBytes: number; storageLimit: number; quotaUsage: number } | null>(null);
-  const [driveConfigured, setDriveConfigured] = useState<boolean | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -61,10 +76,11 @@ export default function StoragePage() {
         const json = await dRes.json();
         if (json.connected === false) {
           setConnected(false);
-          setDriveConfigured(true);
+          setAccounts([]);
+          setFolders({ plan: [], report: [], capa: [] });
         } else {
           setConnected(true);
-          setDriveConfigured(true);
+          setAccounts(json.accounts || []);
           setDriveInfo({
             storageBytes: json.storageBytes || 0,
             storageLimit: json.storageLimit || 0,
@@ -74,12 +90,8 @@ export default function StoragePage() {
         }
       } else {
         const body = await dRes.json().catch(() => ({}));
-        if (body?.error?.includes("not configured") || body?.error?.includes("Drive")) {
-          setDriveConfigured(false);
-        } else {
-          setDriveConfigured(false);
-          showErr(body?.error || "Could not load Google Drive storage.");
-        }
+        setConnected(false);
+        if (body?.error) showErr(body.error);
       }
     } catch {
       showErr("Storage load failed.");
@@ -98,15 +110,14 @@ export default function StoragePage() {
   const dQuota = driveInfo?.quotaUsage || 0;
   const dPct = dLimit ? (dQuota / dLimit) * 100 : 0;
 
-  async function disconnect() {
-    if (!confirm("Disconnect Google Drive? Saved files stay in Drive.")) return;
+  async function disconnect(id: string, label: string) {
+    if (!confirm(`Disconnect "${label}"? Saved files stay in Drive.`)) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/google-drive/disconnect", { method: "POST" });
+      const res = await fetch(`/api/google-drive/accounts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!res.ok) return showErr("Could not disconnect.");
-      setConnected(null);
-      setFolders({ plan: [], report: [], capa: [] });
       showMsg("Disconnected.");
+      fetchAll();
     } catch {
       showErr("Could not disconnect.");
     } finally {
@@ -196,22 +207,6 @@ export default function StoragePage() {
 
         {error && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg px-4 py-3 mb-6">{error}</div>}
         {message && <div className="bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg px-4 py-3 mb-6">{message}</div>}
-        {connected === false && driveConfigured && (
-          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm rounded-lg px-4 py-3 mb-6 flex flex-col sm:flex-row sm:items-center items-start justify-between gap-4">
-            <div>
-              <p className="font-medium text-yellow-200">Google Drive is not connected</p>
-              <p className="text-yellow-300/60 mt-1">Connect your Google account to store audit plan PDFs in your Drive folders.</p>
-            </div>
-            <a href="/api/google-drive/auth" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium shrink-0">
-              Connect Google Drive
-            </a>
-          </div>
-        )}
-        {driveConfigured === false && (
-          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-sm rounded-lg px-4 py-3 mb-6">
-            Google Drive is not configured yet.
-          </div>
-        )}
 
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /></div>
@@ -256,12 +251,17 @@ export default function StoragePage() {
               <div className="px-6 py-4 border-b border-white/10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Google Drive</h2>
-                  <p className="text-xs text-blue-200/60 mt-1">{connected ? `${totalFiles} file(s) listed` : "Connect to view files"}</p>
+                  <p className="text-xs text-blue-200/60 mt-1">
+                    {connected ? `${accounts.length} account(s) · ${totalFiles} file(s) listed` : "Connect to view files"}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {connected && (
-                    <button onClick={disconnect} disabled={busy} className={`${btnCls} bg-white/10 hover:bg-white/20`}>Disconnect</button>
-                  )}
+                  <a href="/api/google-drive/auth" className={`${btnCls} bg-blue-600 hover:bg-blue-500`}>
+                    {connected ? "Connect another Drive" : "Connect Google Drive"}
+                  </a>
+                  <a href="/api/google-drive/auth?client=second" className={`${btnCls} bg-indigo-600 hover:bg-indigo-500`}>
+                    Connect (2nd project)
+                  </a>
                   <button onClick={fetchAll} disabled={busy} className={`${btnCls} bg-white/10 hover:bg-white/20`}>Refresh</button>
                   <button onClick={downloadAll} disabled={busy || files.length === 0} className={`${btnCls} bg-green-600 hover:bg-green-500`}>{busy ? "..." : "Download ZIP"}</button>
                   <button onClick={deleteAll} disabled={busy || files.length === 0} className={`${btnCls} bg-red-600 hover:bg-red-500`}>Delete All</button>
@@ -270,13 +270,38 @@ export default function StoragePage() {
 
               <div className="px-6 py-4 border-b border-white/10">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm mb-2">
-                  <span className="text-white/80">Storage used</span>
-                  <span className="text-blue-200/60 text-xs">{fmtBytes(dBytes)} in folders · {fmtBytes(dQuota)} of {fmtBytes(dLimit)} Drive quota · {dPct.toFixed(2)}%</span>
+                  <span className="text-white/80">Total storage used</span>
+                  <span className="text-blue-200/60 text-xs">{fmtBytes(dBytes)} in folders · {fmtBytes(dQuota)} of {fmtBytes(dLimit)} across {accounts.length} account(s) · {dPct.toFixed(2)}%</span>
                 </div>
                 <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${dPct > 80 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${Math.min(Math.max(dPct, 0.5), 100)}%` }} />
                 </div>
               </div>
+
+              {accounts.length > 0 && (
+                <div className="px-6 py-4 border-b border-white/10 space-y-3">
+                  <p className="text-xs text-blue-200/60">Connected accounts (uploads go to the first account with free space)</p>
+                  {accounts.map((a) => {
+                    const pct = a.quotaLimit ? (a.quotaUsage / a.quotaLimit) * 100 : 0;
+                    return (
+                      <div key={a.id} className="bg-white/5 rounded-xl px-4 py-3">
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <div className="min-w-0">
+                            <p className="text-sm text-white/90 truncate">{a.label}</p>
+                            <p className="text-xs text-blue-200/40">
+                              {a.quotaLimit ? `${fmtBytes(a.quotaUsage)} of ${fmtBytes(a.quotaLimit)}` : "Quota unavailable"} · {a.counts.plan + a.counts.report + a.counts.capa} file(s) · {a.clientKey === "second" ? "2nd project" : "main project"}
+                            </p>
+                          </div>
+                          <button onClick={() => disconnect(a.id, a.label)} disabled={busy} className="text-xs text-red-400 hover:text-red-300 shrink-0">Disconnect</button>
+                        </div>
+                        <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${pct > 80 ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${Math.min(Math.max(pct, 0.5), 100)}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="px-6 pt-4 flex flex-wrap gap-2">
                 <button onClick={() => setActiveType("plan")} className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${activeType === "plan" ? "bg-blue-600 text-white" : "bg-white/10 text-blue-200/70 hover:bg-white/15"}`}>
@@ -300,7 +325,7 @@ export default function StoragePage() {
                         <div className="min-w-0">
                           <p className="text-sm text-white/80 truncate">{f.name}</p>
                           <p className="text-xs text-blue-200/40">
-                            PDF · {fmtBytes(f.bytes)} · {fmtDate(f.created_at)}
+                            PDF · {fmtBytes(f.bytes)} · {fmtDate(f.created_at)}{f.accountLabel ? ` · ${f.accountLabel}` : ""}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

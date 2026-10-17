@@ -11,21 +11,53 @@ export function googleRedirectUri() {
   return process.env.GOOGLE_REDIRECT_URI || `${APP_URL}/api/google-drive/callback`;
 }
 
-export function googleAuthUrl(state: string) {
+export interface OAuthClient {
+  id: string;
+  secret: string;
+}
+
+export function oauthClient(key: string = "default"): OAuthClient {
+  if (key === "second") {
+    return {
+      id: process.env.GOOGLE_OAUTH2_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID || "",
+      secret: process.env.GOOGLE_OAUTH2_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+    };
+  }
+  return {
+    id: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
+    secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+  };
+}
+
+export function googleAuthUrl(state: string, clientKey: string = "default") {
   const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
+    client_id: oauthClient(clientKey).id,
     redirect_uri: googleRedirectUri(),
     response_type: "code",
     scope: [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/drive.metadata.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
       "openid",
     ].join(" "),
     access_type: "offline",
-    prompt: "consent",
+    prompt: "select_account consent",
     state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+export async function fetchGoogleEmail(accessToken: string): Promise<string> {
+  try {
+    const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return "";
+    const info = await res.json();
+    return info.email || "";
+  } catch {
+    return "";
+  }
 }
 
 export function gmailAuthUrl(state: string) {
@@ -45,14 +77,15 @@ export function gmailAuthUrl(state: string) {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export async function exchangeCode(code: string) {
+export async function exchangeCode(code: string, clientKey: string = "default") {
+  const client = oauthClient(clientKey);
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
-      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+      client_id: client.id,
+      client_secret: client.secret,
       redirect_uri: googleRedirectUri(),
       grant_type: "authorization_code",
     }).toString(),
@@ -61,14 +94,15 @@ export async function exchangeCode(code: string) {
   return res.json();
 }
 
-export async function refreshAccessToken(refreshToken: string) {
+export async function refreshAccessToken(refreshToken: string, clientKey: string = "default") {
+  const client = oauthClient(clientKey);
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       refresh_token: refreshToken,
-      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
-      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+      client_id: client.id,
+      client_secret: client.secret,
       grant_type: "refresh_token",
     }).toString(),
   });
@@ -106,35 +140,4 @@ export async function supabaseFromCookies() {
       },
     }
   );
-}
-
-export async function getGoogleAccessToken(supabase: any) {
-  const { data } = await supabase.auth.getUser();
-  const user = data?.user;
-  if (!user) return { connected: false as const, error: "Unauthorized" as const };
-
-  const { data: row } = await supabase
-    .from("google_oauth")
-    .select("access_token, refresh_token, expires_at")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!row) return { connected: false as const, error: "not_connected" as const };
-
-  if (new Date(row.expires_at).getTime() > Date.now() + 60000) {
-    return { connected: true as const, token: row.access_token as string };
-  }
-
-  const refreshed = await refreshAccessToken(row.refresh_token);
-  if (!refreshed?.access_token) return { connected: false as const, error: "refresh_failed" as const };
-
-  const { error: updErr } = await supabase
-    .from("google_oauth")
-    .update({
-      access_token: refreshed.access_token,
-      expires_at: new Date(Date.now() + Number(refreshed.expires_in || 3600) * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", user.id);
-  if (updErr) return { connected: false as const, error: "update_failed" as const };
-  return { connected: true as const, token: refreshed.access_token as string };
 }

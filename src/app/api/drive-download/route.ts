@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGoogleAccessToken, supabaseFromCookies } from "@/lib/google-oauth";
+import { supabaseFromCookies } from "@/lib/google-oauth";
+import { resolveAccounts } from "@/lib/drive-accounts";
 import { driveFileIdFromUrl } from "@/lib/drive-file";
 
 export const dynamic = "force-dynamic";
@@ -14,47 +15,52 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = await supabaseFromCookies();
-  const tokenResult = await getGoogleAccessToken(supabase);
-  if (!tokenResult.connected) {
-    const err = tokenResult.error === "not_connected" ? "not_connected" : "Unauthorized";
-    return NextResponse.json({ error: err }, { status: tokenResult.error === "Unauthorized" ? 401 : 403 });
-  }
-  const token = tokenResult.token;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  try {
-    let filename = "download";
-    let mime = "application/octet-stream";
+  const accounts = await resolveAccounts(supabase, auth.user.id);
+  if (!accounts.length) return NextResponse.json({ error: "not_connected" }, { status: 403 });
+
+  let lastError = "Download failed";
+  for (const account of accounts) {
     try {
-      const meta = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (meta.ok) {
-        const json = await meta.json();
-        if (json.name) filename = json.name;
-        if (json.mimeType) mime = json.mimeType;
+      let filename = "download";
+      let mime = "application/octet-stream";
+      try {
+        const meta = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType`, {
+          headers: { Authorization: `Bearer ${account.token}` },
+        });
+        if (meta.ok) {
+          const json = await meta.json();
+          if (json.name) filename = json.name;
+          if (json.mimeType) mime = json.mimeType;
+        }
+      } catch {
+        /* metadata unavailable, fall back to generic name */
       }
-    } catch {
-      /* metadata unavailable, fall back to generic name */
-    }
-    if (!/\.[A-Za-z0-9]{2,5}$/.test(filename)) filename += ".pdf";
 
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok && res.status !== 404) {
-      throw new Error(`Drive download failed: ${res.status} ${await res.text()}`);
-    }
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${account.token}` },
+      });
+      if (!res.ok) {
+        lastError = `Drive download failed: ${res.status}`;
+        continue;
+      }
 
-    const bytes = Buffer.from(await res.arrayBuffer());
-    const safe = filename.replace(/[^\w.\-]+/g, "_");
-    return new NextResponse(new Uint8Array(bytes), {
-      headers: {
-        "Content-Type": mime,
-        "Content-Disposition": `attachment; filename="${safe}"`,
-        "Cache-Control": "no-store",
-      },
-    });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Download failed" }, { status: 500 });
+      if (!/\.[A-Za-z0-9]{2,5}$/.test(filename)) filename += ".pdf";
+      const bytes = Buffer.from(await res.arrayBuffer());
+      const safe = filename.replace(/[^\w.\-]+/g, "_");
+      return new NextResponse(new Uint8Array(bytes), {
+        headers: {
+          "Content-Type": mime,
+          "Content-Disposition": `attachment; filename="${safe}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (e: any) {
+      lastError = e?.message || lastError;
+    }
   }
+
+  return NextResponse.json({ error: lastError }, { status: 500 });
 }

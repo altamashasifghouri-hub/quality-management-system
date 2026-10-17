@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getGoogleAccessToken, supabaseFromCookies } from "@/lib/google-oauth";
-import { driveFolderId, driveListing } from "@/lib/drive";
+import { supabaseFromCookies } from "@/lib/google-oauth";
+import { driveListing } from "@/lib/drive";
+import { refreshStoredQuota, resolveAccounts } from "@/lib/drive-accounts";
 
 const MANAGEMENT_URL = "https://api.supabase.com/v1/projects/drmuaoxfkomjeqvbnexx/database/query";
 
@@ -27,15 +28,6 @@ async function supabaseTables() {
   return json.value || [];
 }
 
-async function driveAbout(token: string) {
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/about?fields=storageQuota(limit,usage)`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok) return null;
-  return res.json();
-}
-
 export async function GET(req: Request) {
   const supabase = await supabaseFromCookies();
   const { searchParams } = new URL(req.url);
@@ -50,27 +42,63 @@ export async function GET(req: Request) {
     }
   }
 
-  const tokenResult = await getGoogleAccessToken(supabase);
-  if (!tokenResult.connected) {
-    return NextResponse.json({ connected: false }, { status: tokenResult.error === "Unauthorized" ? 401 : 200 });
-  }
-  const token = tokenResult.token;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return NextResponse.json({ connected: false }, { status: 401 });
+
+  const accounts = await resolveAccounts(supabase, auth.user.id);
+  if (!accounts.length) return NextResponse.json({ connected: false });
 
   try {
     if (source === "drive") {
-      const [plan, report, capa, about] = await Promise.all([
-        driveListing(token, "plan"),
-        driveListing(token, "report"),
-        driveListing(token, "capa"),
-        driveAbout(token).catch(() => null),
-      ]);
-      const bytes = [...plan, ...report, ...capa].reduce((sum: number, f: any) => sum + Number(f.bytes || 0), 0);
+      const aggFolders: { plan: any[]; report: any[]; capa: any[] } = { plan: [], report: [], capa: [] };
+      let storageBytes = 0;
+      let storageLimit = 0;
+      let quotaUsage = 0;
+
+      const accountsOut = await Promise.all(
+        accounts.map(async (account, index) => {
+          const label = account.email || (index === 0 ? "Main account" : `Drive ${index + 1}`);
+          const quota = await refreshStoredQuota(supabase, account);
+          const [plan, report, capa] = await Promise.all([
+            driveListing(account.token, account.plan_folder_id || "").catch(() => []),
+            driveListing(account.token, account.report_folder_id || "").catch(() => []),
+            driveListing(account.token, account.capa_folder_id || "").catch(() => []),
+          ]);
+          const tag = (files: any[]) => files.map((f) => ({ ...f, accountId: account.id, accountLabel: label }));
+          aggFolders.plan.push(...tag(plan));
+          aggFolders.report.push(...tag(report));
+          aggFolders.capa.push(...tag(capa));
+          const bytes = [...plan, ...report, ...capa].reduce((sum, f) => sum + Number(f.bytes || 0), 0);
+          storageBytes += bytes;
+          storageLimit += quota.limit;
+          quotaUsage += quota.usage;
+          return {
+            id: account.id,
+            email: account.email,
+            label,
+            sortOrder: account.sort_order,
+            clientKey: account.client_key || "default",
+            storageBytes: bytes,
+            quotaUsage: quota.usage,
+            quotaLimit: quota.limit,
+            folderIds: {
+              plan: account.plan_folder_id,
+              report: account.report_folder_id,
+              evidence: account.evidence_folder_id,
+              capa: account.capa_folder_id,
+            },
+            counts: { plan: plan.length, report: report.length, capa: capa.length },
+          };
+        })
+      );
+
       return NextResponse.json({
         connected: true,
-        folders: { plan, report, capa },
-        storageBytes: bytes,
-        storageLimit: Number(about?.storageQuota?.limit || 0),
-        quotaUsage: Number(about?.storageQuota?.usage || 0),
+        accounts: accountsOut,
+        folders: aggFolders,
+        storageBytes,
+        storageLimit,
+        quotaUsage,
       });
     }
     return NextResponse.json({ error: "Unknown source" }, { status: 400 });
@@ -81,11 +109,8 @@ export async function GET(req: Request) {
 
 export async function DELETE(req: Request) {
   const supabase = await supabaseFromCookies();
-  const tokenResult = await getGoogleAccessToken(supabase);
-  if (!tokenResult.connected) {
-    return NextResponse.json({ error: "Not connected to Google Drive" }, { status: 401 });
-  }
-  const token = tokenResult.token;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const source = searchParams.get("source");
@@ -93,16 +118,19 @@ export async function DELETE(req: Request) {
   const fileId = searchParams.get("fileId");
   if (!fileId) return NextResponse.json({ error: "Missing fileId" }, { status: 400 });
 
-  try {
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok && res.status !== 404) {
-      throw new Error(`Drive delete failed: ${res.status} ${await res.text()}`);
+  const accounts = await resolveAccounts(supabase, auth.user.id);
+  let lastError = "Delete failed";
+  for (const account of accounts) {
+    try {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${account.token}` },
+      });
+      if (res.ok || res.status === 404) return NextResponse.json({ result: "ok" });
+      lastError = `Drive delete failed: ${res.status}`;
+    } catch (e: any) {
+      lastError = e?.message || lastError;
     }
-    return NextResponse.json({ result: "ok" });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Delete failed" }, { status: 500 });
   }
+  return NextResponse.json({ error: lastError }, { status: 500 });
 }

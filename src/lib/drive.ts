@@ -5,9 +5,8 @@ export function driveFolderId(kind: string = "plan") {
   return process.env.GOOGLE_DRIVE_PLAN_FOLDER_ID || "";
 }
 
-export async function driveListing(token: string, kind: string) {
-  const folderId = driveFolderId(kind);
-  if (!folderId) throw new Error("Google Drive folder is not configured.");
+export async function driveListing(token: string, folderId: string) {
+  if (!folderId) return [];
   const query = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,size,mimeType,createdTime,webViewLink,webContentLink)&orderBy=createdTime%20desc&pageSize=1000`,
