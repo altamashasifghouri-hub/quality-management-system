@@ -24,8 +24,12 @@ interface AuditReportItem {
   departments: string[]; findings: Finding[]; date: string; document_number: string;
   team: string; prepared_by: string; result: string; round: 1 | 2;
 }
+interface Observation {
+  key?: string; area?: string; context?: string; outcome?: string; pictures?: string[];
+}
 interface VisitItem {
   id: string; branch_id: string; branch_name: string; date: string; purpose: string;
+  context: string; visited_by: string; status: string; observations: Observation[];
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -134,6 +138,69 @@ function ReportCard({ report, branchColor }: { report: AuditReportItem; branchCo
   );
 }
 
+function outcomeClasses(outcome?: string) {
+  switch ((outcome || "").toLowerCase()) {
+    case "compliant": return "bg-green-500/20 border-green-500/40 text-green-300";
+    case "follow-up": return "bg-amber-500/20 border-amber-500/40 text-amber-300";
+    case "observation": return "bg-blue-500/20 border-blue-500/40 text-blue-300";
+    default: return "bg-white/10 border-white/20 text-blue-200";
+  }
+}
+
+function visitStatusClasses(status?: string) {
+  switch ((status || "").toLowerCase()) {
+    case "closed": return "bg-slate-500/20 border-slate-400/40 text-slate-300";
+    case "in progress": return "bg-amber-500/20 border-amber-500/40 text-amber-300";
+    default: return "bg-emerald-500/20 border-emerald-400/40 text-emerald-300";
+  }
+}
+
+function VisitReportCard({ visit, branchColor }: { visit: VisitItem; branchColor?: string }) {
+  const obs = visit.observations || [];
+  return (
+    <div className="bg-teal-500/[0.06] border border-teal-400/25 rounded-xl p-4 space-y-3">
+      <div>
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className={`w-2.5 h-2.5 rounded-full ${branchColor || "bg-teal-500"}`} />
+          <span className="text-sm font-semibold text-white">{visit.branch_name || "—"}</span>
+          <span className="px-2 py-0.5 text-[10px] rounded-full bg-teal-500/20 border border-teal-400/30 text-teal-200">Branch Visit</span>
+          {visit.status && <span className={`px-2 py-0.5 text-[10px] rounded-full border ${visitStatusClasses(visit.status)}`}>{visit.status}</span>}
+        </div>
+        <p className="text-sm text-white/85">{visit.purpose || "Visit"}</p>
+        <p className="text-[11px] text-teal-200/40 mt-0.5">
+          {[visit.date, visit.visited_by ? `Visited by: ${visit.visited_by}` : ""].filter(Boolean).join(" · ")}
+        </p>
+      </div>
+
+      {visit.context && <p className="text-[11px] text-blue-100/70 leading-relaxed whitespace-pre-wrap">{visit.context}</p>}
+
+      <div className="flex flex-wrap gap-1.5">
+        <span className="px-2 py-0.5 text-[10px] rounded-full bg-white/10 text-white font-semibold border border-white/10">{obs.length} observation{obs.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      <div className="space-y-2">
+        {obs.length === 0 && <p className="text-[11px] text-teal-200/40">No observations recorded for this visit.</p>}
+        {obs.map((o, i) => (
+          <div key={o.key || i} className="bg-slate-900/50 border border-white/5 rounded-lg p-3">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+              <span className="text-[10px] font-semibold text-teal-300">{o.area || `Item ${i + 1}`}</span>
+              <span className={`px-1.5 py-0.5 text-[10px] rounded-full border ${outcomeClasses(o.outcome)}`}>{o.outcome || "Observation"}</span>
+            </div>
+            {o.context && <p className="text-[11px] text-blue-100/80 leading-relaxed whitespace-pre-wrap">{o.context}</p>}
+            {o.pictures && o.pictures.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {o.pictures.map((url, j) => (
+                  <EvidenceThumb key={j} url={url} className="w-20 h-16 object-cover rounded border border-white/15 hover:opacity-80" />
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AuditSchedulePage() {
   const supabase = createClient();
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -173,7 +240,7 @@ export default function AuditSchedulePage() {
       .select("id,title,branch_id,departments,findings,date_of_plan,document_number,audit_team,prepared_by,status");
     const { data: visitRows } = await supabase
       .from("visit_records")
-      .select("id,branch_id,visit_date,purpose")
+      .select("id,branch_id,visit_date,purpose,context,visited_by,status,observations")
       .order("visit_date");
     const pmap: Record<string, "iso" | "internal"> = {};
     (isoPlanRows || []).forEach((r: any) => { if (r.schedule_id) pmap[r.schedule_id] = "iso"; });
@@ -210,7 +277,9 @@ export default function AuditSchedulePage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setVisits((visitRows || []).filter((v: any) => v.visit_date).map((v: any) => ({
       id: v.id, branch_id: v.branch_id || "", branch_name: branchName.get(v.branch_id) || "",
-      date: v.visit_date, purpose: v.purpose || "",
+      date: v.visit_date, purpose: v.purpose || "", context: v.context || "",
+      visited_by: v.visited_by || "", status: v.status || "",
+      observations: Array.isArray(v.observations) ? v.observations : [],
     })));
     setLoading(false);
   }, [supabase]);
@@ -448,16 +517,28 @@ export default function AuditSchedulePage() {
           </div>
 
           <div className="bg-gradient-to-br from-blue-500/10 via-slate-800/30 to-slate-900/50 backdrop-blur-md border border-blue-400/20 rounded-2xl p-6">
-            <h3 className="text-sm font-semibold text-white mb-3">{selectedDay ? `Audit reports — ${selectedDay}` : "Select a day"}</h3>
-            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day to see its audit reports (with Round 1 / Round 2 issues), scheduled audits and branch visits.</p>}
+            <h3 className="text-sm font-semibold text-white mb-3">{selectedDay ? `Reports — ${selectedDay}` : "Select a day"}</h3>
+            {!selectedDay && <p className="text-xs text-blue-200/40">Click a calendar day to see its audit reports (with Round 1 / Round 2 issues), branch visit reports and scheduled audits.</p>}
             {selectedDay && (
               <div className="space-y-4 lg:max-h-[80vh] lg:overflow-y-auto lg:pr-1">
-                {selectedDayReports.length === 0 ? (
-                  <p className="text-xs text-blue-200/40">No audit report recorded for this day.</p>
-                ) : (
-                  selectedDayReports.map((r) => (
-                    <ReportCard key={`${r.kind}-${r.id}`} report={r} branchColor={branchColorMap[r.branch_id]} />
-                  ))
+                {selectedDayReports.length === 0 && selectedDayVisits.length === 0 && selectedDaySchedules.length === 0 && (
+                  <p className="text-xs text-blue-200/40">No audit report or visit recorded for this day.</p>
+                )}
+                {selectedDayReports.length > 0 && (
+                  <div className="space-y-4">
+                    {selectedDayReports.map((r) => (
+                      <ReportCard key={`${r.kind}-${r.id}`} report={r} branchColor={branchColorMap[r.branch_id]} />
+                    ))}
+                  </div>
+                )}
+
+                {selectedDayVisits.length > 0 && (
+                  <div className="pt-2 border-t border-white/10 space-y-4">
+                    <h4 className="text-xs font-semibold text-teal-200/70 uppercase tracking-wide">Visit reports on this day</h4>
+                    {selectedDayVisits.map((v) => (
+                      <VisitReportCard key={v.id} visit={v} branchColor={branchColorMap[v.branch_id]} />
+                    ))}
+                  </div>
                 )}
 
                 {selectedDaySchedules.length > 0 && (
@@ -476,21 +557,6 @@ export default function AuditSchedulePage() {
                           {s.departments.map((dept, i) => (<span key={i} className="px-1.5 py-0.5 bg-white/5 rounded">{dept}</span>))}
                         </div>
                         {s.auditor && <div className="text-xs text-blue-200/40 ml-4 mt-0.5">Auditor: {s.auditor}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {selectedDayVisits.length > 0 && (
-                  <div className="pt-2 border-t border-white/10">
-                    <h4 className="text-xs font-semibold text-teal-200/70 uppercase tracking-wide mb-2">Branch visits on this day</h4>
-                    {selectedDayVisits.map((v) => (
-                      <div key={v.id} className="mb-2 p-3 bg-teal-500/10 rounded-lg border border-teal-400/20 flex items-start gap-2">
-                        <svg className="w-4 h-4 text-teal-300 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>
-                        <div>
-                          <div className="text-sm text-teal-100 font-medium">{v.branch_name}</div>
-                          <div className="text-xs text-teal-200/60">{v.purpose || "Visit"}</div>
-                        </div>
                       </div>
                     ))}
                   </div>
